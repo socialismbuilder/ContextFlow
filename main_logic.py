@@ -350,7 +350,8 @@ def on_card_render(html: str, card: Card, context: str) -> str:
                         current_queue_items = set(item for item in task_queue.queue)
 
                         for kw in upcoming_keywords:
-                            if kw and kw not in cache and kw not in current_queue_items:
+                            #if kw and kw not in cache and kw not in current_queue_items:
+                            if kw and (kw not in cache or (not cache.get(kw))) and kw not in current_queue_items:
                                 task_queue.put((1, kw)) # 被动缓存，低优先级 (1)
                                 print(f"DEBUG: Preloading - Added '{kw}' to queue (priority 1).")
             except Exception as e:
