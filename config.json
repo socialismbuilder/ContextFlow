@@ -1,0 +1,10 @@
+{
+    "api_url": "https://ark.cn-beijing.volces.com/api/v3/chat/completions",
+    "api_key": "",
+    "model_name": "deepseek-v3-250324",
+    "deck_name": "这里填写目标牌组",
+    "vocab_level": "6000词 (CET-6)",
+    "learning_goal": "提升日常浏览英文网页与资料的流畅度",
+    "difficulty_level": "中高级 (B2-C1)",
+    "sentence_length_desc": "30个单词左右，即较长且包含从句等复杂结构"
+}
