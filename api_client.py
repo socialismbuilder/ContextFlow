@@ -7,8 +7,8 @@ import typing # Add typing for Optional
 
 # Configuration details are dynamically loaded from user settings via config_manager
 
-prompt = '''
-请为英语学习者生成5个包含关键词 ‘{world}’ 的英文例句，并附带中文翻译。
+prompt1 = '''
+请为{language}学习者生成5个包含关键词 ‘{world}’ 的{language}例句，并附带中文翻译。
 
 学习者信息：
 - 当前词汇量大致为：{vocab_level}
@@ -33,11 +33,13 @@ prompt = '''
 
 输出格式要求：
 
-- 必须返回严格的JSON格式，结构为：{{"sentences": [[英文例句1, 中文翻译1], [英文例句2, 中文翻译2], ..., [英文例句5, 中文翻译5]]}}
-- 每个子数组必须包含两个字符串元素：第一个是包含关键词‘{world}’的英文例句，第二个是对应的中文翻译
+- 必须返回严格的JSON格式，结构为：{{"sentences": [[{language}例句1, 中文翻译1], [{language}例句2, 中文翻译2], ..., [{language}例句5, 中文翻译5]]}}
+- 每个子数组必须包含两个字符串元素：第一个是包含关键词‘{world}’的{language}例句，第二个是对应的中文翻译
 - 5个例句需覆盖关键词的各种用法和含义，且完全符合前文所述的难度/长度/学习目标要求
 - **绝对不要** 输出任何其他内容，如序号、标题、解释或额外字段
-- 必须以`sentences`命名变量，而不是{world}
+- 必须以`sentences`命名变量，而不是{world}'''
+
+prompt21 = '''
 
 示例JSON输出：
 {{
@@ -54,16 +56,40 @@ prompt = '''
 }}
 
 
-示例仅为格式参考。难度，句子长度等信息请按照生成规则。请严格按照上述要求生成。
+示例仅为格式参考。语言，难度，句子长度等信息请按照生成规则。请严格按照上述要求生成。
 '''
+
+
+prompt22 = '''
+- 关键词前后需要加上<u></u>标签强调显示。
+示例JSON输出：
+{{
+    "sentences": [
+        [
+            "The research findings suggest a <u>correlation</u> between sleep quality and cognitive performance.",
+            "研究结果表明睡眠质量与认知表现之间存在相关性。"
+        ],
+        [
+            "Children <u>instinctively</u> grasp simple concepts faster than abstract theories.",
+            "孩子们本能地掌握简单概念比抽象理论要快。"
+        ]
+    ]
+}}
+
+
+示例仅为格式参考。语言，难度，句子长度等信息请按照生成规则。请严格按照上述要求生成。
+'''
+
 
 # --- Configuration (can be loaded from config or passed) ---
 # Default values, consider loading these dynamically
 DEFAULT_CONFIG = {
-    "vocab_level": "6000词 (CET-6)",
+    "vocab_level": "大学英语四级 CET-4 (4000词)",
     "learning_goal": "提升日常浏览英文网页与资料的流畅度",
-    "difficulty_level": "中高级 (B2-C1)",
-    "sentence_length_desc": "30个单词左右，即较长且包含从句等复杂结构"
+    "difficulty_level": "中级 (B1): 并列/简单复合句，稍复杂话题，扩大词汇范围",
+    "sentence_length_desc": "中等长度句 (约25-40词): 通用对话及文章常用长度",
+    "learning_language":"英语",
+    "highlight_target_word":False
 }
 
 def generate_ai_sentence(config, keyword):
@@ -79,6 +105,14 @@ def generate_ai_sentence(config, keyword):
     learning_goal = config.get("learning_goal", DEFAULT_CONFIG["learning_goal"])
     difficulty_level = config.get("difficulty_level", DEFAULT_CONFIG["difficulty_level"])
     sentence_length_desc = config.get("sentence_length_desc", DEFAULT_CONFIG["sentence_length_desc"])
+    learning_language = config.get("learning_language",DEFAULT_CONFIG["learning_language"])
+
+    highlight_target_word = config.get("highlight_target_word",DEFAULT_CONFIG["highlight_target_word"])
+
+    if highlight_target_word:
+        prompt = prompt1+prompt22
+    else:
+        prompt = prompt1+prompt21
 
     if not api_url or not api_key or not model_name:
         raise ValueError("API URL, Key, or Model Name missing in config.")
@@ -88,7 +122,8 @@ def generate_ai_sentence(config, keyword):
         vocab_level=vocab_level,
         learning_goal=learning_goal,
         difficulty_level=difficulty_level,
-        sentence_length_desc=sentence_length_desc
+        sentence_length_desc=sentence_length_desc,
+        language = learning_language
     )
 
     try:
@@ -175,7 +210,7 @@ def test_api_sync(
     payload = {
         "model": model_name,
         "messages": [{"role": "user", "content": "不要有任何多余其他输出，重复这个词: Hello"}],
-        "max_tokens": 5  # 请求非常短的响应
+        "max_tokens": 50  
     }
 
     try:

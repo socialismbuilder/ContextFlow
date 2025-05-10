@@ -96,7 +96,7 @@ def _sentence_worker_manager():
 def get_upcoming_cards(card):
     config = get_config()
     deck_name = config.get("deck_name")
-    print(f"目标牌组: {deck_name}")
+    #print(f"目标牌组: {deck_name}")
 
     # Initialize empty lists for keywords
     new_keywords = []
@@ -165,7 +165,7 @@ def on_card_render(html: str, card: Card, context: str) -> str:
     try:
         # 尝试获取卡片所在的牌组名称
         current_deck = aqt.mw.col.decks.name(card.did)
-        print("当前牌组名称："+current_deck)
+        # print("当前牌组名称："+current_deck)
     except Exception as e:
         print(f"ERROR: 获取牌组名称失败 for card {card.id}: {e}")
         return html # 获取失败则不处理
@@ -224,7 +224,7 @@ def on_card_render(html: str, card: Card, context: str) -> str:
                         # _clear_processing_state() # Removed
                         showing_sentence = current_sentence
                         showing_translation = current_translation
-                        print(f"DEBUG: 显示 '{keyword}' 的缓存句子")
+                        #print(f"DEBUG: 显示 '{keyword}' 的缓存句子")
                         html_to_return = Process_front_html(current_sentence) # Set HTML for return
                     else:
                         # --- Cache Hit but list is empty ---
@@ -272,7 +272,7 @@ def on_card_render(html: str, card: Card, context: str) -> str:
                 with cache_lock:
                     # 检查是否已在队列中或正在处理？现在等待的优先级较低。
                     task_queue.put((0, keyword)) # 主动缓存，高优先级 (0)
-                    print(f"DEBUG: Added '{keyword}' to queue (cache miss, priority 0).")
+                    print(f"DEBUG: 已添加'{keyword}'到队列（缓存未命中，优先级0）。")
 
                 # 最终主线程安全的定时器实现（使用PyQt6的QTimer）
                 start_time = time.time()
@@ -338,10 +338,10 @@ def on_card_render(html: str, card: Card, context: str) -> str:
                 html_to_return = Process_front_html(showing_sentence)
 
             # --- Preloading Logic (Runs AFTER determining initial HTML) ---
-            print("DEBUG: 开始预加载逻辑...")
+            # print("DEBUG: 开始预加载逻辑...")
             try:
                 upcoming_keywords = get_upcoming_cards(card) # Call the function to get upcoming keywords
-                print(f"DEBUG: 预加载检查 - 待处理关键词: {upcoming_keywords}") # 添加日志
+                # print(f"DEBUG: 预加载检查 - 待处理关键词: {upcoming_keywords}") # 添加日志
                 if upcoming_keywords:
                     with cache_lock: # Lock for safe cache access and queue adding
                         cache = load_cache() # Load cache once inside the lock
@@ -353,7 +353,7 @@ def on_card_render(html: str, card: Card, context: str) -> str:
                             #if kw and kw not in cache and kw not in current_queue_items:
                             if kw and (kw not in cache or (not cache.get(kw))) and kw not in current_queue_items:
                                 task_queue.put((1, kw)) # 被动缓存，低优先级 (1)
-                                print(f"DEBUG: Preloading - Added '{kw}' to queue (priority 1).")
+                                print(f"调试：预加载 - 已将'{kw}'加入队列（优先级1）。")
             except Exception as e:
                 print(f"ERROR: Failed to preload keywords: {e}")
             except Exception as e:
