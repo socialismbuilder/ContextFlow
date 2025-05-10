@@ -20,8 +20,9 @@ from .Process_Card import Process_back_html,Process_front_html
 task_queue = queue.PriorityQueue() # 使用优先级队列
 cache_lock = threading.Lock() # 用于保护缓存访问和队列检查/添加
 stop_event = threading.Event()
-# worker_thread = None # 不再需要单个工作线程，将使用线程池
-executor = None # 用于管理线程池
+high_prio_executor = None # 用于高优先级任务
+low_prio_executor = None  # 用于低优先级任务
+# executor = None # 不再需要单个执行器
 # --- 结束后台任务队列 ---
 
 # showing_sentence 和 showing_translation 仍然需要，用于跨 question/answer 状态传递
@@ -57,37 +58,38 @@ def _process_keyword_task(keyword_with_priority):
 
 
 def _sentence_worker_manager():
-    """后台工作线程管理器，从队列中获取任务并提交到线程池"""
-    global executor
-    if executor is None: # 确保线程池已初始化
-        print("ERROR: Thread pool executor not initialized in _sentence_worker_manager.")
+    """后台工作线程管理器，从队列中获取任务并提交到相应的线程池"""
+    global high_prio_executor, low_prio_executor
+    if high_prio_executor is None or low_prio_executor is None:
+        print("ERROR: One or both thread pool executors not initialized in _sentence_worker_manager.")
         return
 
     while not stop_event.is_set():
         try:
-            # 等待任务，设置超时以便能响应 stop_event
-            # PriorityQueue.get() 返回 (priority, item)
-            keyword_with_priority = task_queue.get(timeout=1)
-            # 将任务提交给线程池
-            # executor.submit 返回一个 Future 对象，我们这里不需要它
-            # 我们需要确保 task_done 在任务完成后被调用
-            future = executor.submit(_process_keyword_task, keyword_with_priority)
+            priority, keyword = task_queue.get(timeout=1) # 解包
+            keyword_with_priority = (priority, keyword) # 重新打包以传递
+
+            print(f"DEBUG_QUEUE: 从队列中获取任务: {keyword} (优先级: {priority})")
+
+            if priority == 0: # 假设0是最高优先级
+                print(f"DEBUG_QUEUE: 提交高优先级任务到 high_prio_executor: {keyword}")
+                future = high_prio_executor.submit(_process_keyword_task, keyword_with_priority)
+            else:
+                print(f"DEBUG_QUEUE: 提交低优先级任务到 low_prio_executor: {keyword}")
+                future = low_prio_executor.submit(_process_keyword_task, keyword_with_priority)
+            
             # 当任务完成时调用 task_done
             future.add_done_callback(lambda f: task_queue.task_done())
+            print(f"DEBUG_QUEUE: 任务已提交: {keyword} (优先级: {priority})")
 
         except queue.Empty:
             continue # 队列为空，继续循环等待
         except Exception as e:
             print(f"ERROR: Error getting/submitting task from/to queue: {e}")
-            # 如果从队列获取任务时出错，可能需要将任务放回或记录
-            # 如果是 submit 出错，也需要处理
-            # 简单起见，暂时仅打印错误并继续
-            # 如果任务已取出但提交失败，需要 task_queue.task_done() 或重新入队
             try:
-                # 尝试标记任务完成，即使处理失败，以避免队列阻塞
-                task_queue.task_done()
-            except ValueError: # 如果任务未被 get
-                pass
+                task_queue.task_done() # 尝试标记任务完成以避免队列阻塞
+            except ValueError:
+                pass # 如果任务未被 get
             continue
 
     print("DEBUG: Sentence worker manager thread stopped.")
@@ -103,22 +105,40 @@ def get_upcoming_cards(card):
     learn_keywords = []
     review_keywords = []
 
-    # Get 3 new cards
-    new_query = f"deck:{deck_name} is:new"
-    new_card_ids = mw.col.find_cards(new_query)[:3]  # Limit to 3
 
-    for card_id in new_card_ids:
+    # Get new cards, compare first and last due, take 3 from the smaller end
+    new_query = f"deck:{deck_name} is:new"
+    all_new_card_ids = mw.col.find_cards(new_query)  # Get all new card IDs
+
+    selected_card_ids_for_new = []
+    if len(all_new_card_ids) <= 3:
+        selected_card_ids_for_new = all_new_card_ids
+    else:
+        first_card_id = all_new_card_ids[0]
+        last_card_id = all_new_card_ids[-1]
+        
+        first_card_due = mw.col.get_card(first_card_id).due
+        last_card_due = mw.col.get_card(last_card_id).due
+        
+        if first_card_due <= last_card_due:
+            selected_card_ids_for_new = all_new_card_ids[:3]
+        else:
+            selected_card_ids_for_new = all_new_card_ids[-3:]
+
+    for card_id in selected_card_ids_for_new:
         card = mw.col.get_card(card_id)
-        keyword = card.note().fields[0]
-        # Clean the keyword
-        keyword = re.sub('<.*?>', '', keyword)  # Remove HTML tags
+        # Extract and clean keyword
+        raw_keyword = card.note().fields[0] if card.note().fields else ""
+        keyword = re.sub('<.*?>', '', raw_keyword)  # Remove HTML tags
         keyword = re.sub('\[.*?\]', '', keyword)  # Remove sound tags
         keyword = keyword.strip()
-        new_keywords.append(keyword)
+        if keyword: # Ensure keyword is not empty after cleaning
+            new_keywords.append(keyword)
+        new_keywords.reverse()
 
     # Get 3 learning cards
     learning_query = f"deck:{deck_name} is:learn"
-    learning_card_ids = mw.col.find_cards(learning_query)  # Limit to 3
+    learning_card_ids = mw.col.find_cards(learning_query) 
 
     for card_id in learning_card_ids:
         card = mw.col.get_card(card_id)
@@ -150,7 +170,7 @@ def get_upcoming_cards(card):
     #print(f"新学卡片关键词 ({len(new_keywords)}张): {new_keywords}")
     #print(f"学习中卡片关键词 ({len(learn_keywords)}张): {learn_keywords}")
     #print(f"复习卡片关键词 ({len(review_keywords)}张): {review_keywords}")
-    print(f"全部关键词:共 {len(all_keywords)}个")
+    #print(f"全部关键词:共 {len(all_keywords)}个")
 
     return all_keywords
 
@@ -351,7 +371,7 @@ def on_card_render(html: str, card: Card, context: str) -> str:
 
                         for kw in upcoming_keywords:
                             #if kw and kw not in cache and kw not in current_queue_items:
-                            if kw and (kw not in cache or (not cache.get(kw))) and kw not in current_queue_items:
+                            if kw and (kw not in cache or (not cache.get(kw))) and kw not in current_queue_items and kw != keyword:
                                 task_queue.put((1, kw)) # 被动缓存，低优先级 (1)
                                 print(f"调试：预加载 - 已将'{kw}'加入队列（优先级1）。")
             except Exception as e:
@@ -384,53 +404,64 @@ def on_card_render(html: str, card: Card, context: str) -> str:
 # --- End Obsolete functions ---
 
 def start_worker():
-    """启动后台例句生成工作线程（现在是线程池和管理器）"""
-    global executor, manager_thread # manager_thread 将是运行 _sentence_worker_manager 的线程
-    if executor is None: # 或者检查 manager_thread 是否存活
+    """启动后台例句生成工作线程（现在是两个线程池和管理器）"""
+    global high_prio_executor, low_prio_executor, manager_thread
+    if high_prio_executor is None and low_prio_executor is None:
         stop_event.clear()
-        # 创建一个固定大小为5的线程池
-        executor = concurrent.futures.ThreadPoolExecutor(max_workers=5)
-        # 启动一个单独的线程来管理从队列到线程池的任务提交
+        # 创建两个线程池
+        # 例如：高优先级用1个线程，低优先级用9个线程
+        high_prio_executor = concurrent.futures.ThreadPoolExecutor(max_workers=1, thread_name_prefix='HighPrioWorker')
+        low_prio_executor = concurrent.futures.ThreadPoolExecutor(max_workers=9, thread_name_prefix='LowPrioWorker')
+        
         manager_thread = threading.Thread(target=_sentence_worker_manager, daemon=True)
         manager_thread.start()
-        print("DEBUG: 句子处理线程池和管理器已启动。")
+        print("DEBUG: 高优先级和低优先级句子处理线程池及管理器已启动。")
+    else:
+        print("DEBUG: 工作线程已在运行或未正确清理。")
+
 
 def stop_worker():
-    """停止后台例句生成工作线程（线程池和管理器）"""
-    global executor, manager_thread
-    if executor:
-        print("DEBUG: Stopping sentence worker manager and thread pool...")
-        stop_event.set() # 通知 _sentence_worker_manager 停止
+    """停止后台例句生成工作线程（两个线程池和管理器）"""
+    global high_prio_executor, low_prio_executor, manager_thread
+    
+    print("DEBUG: Stopping sentence worker manager and thread pools...")
+    stop_event.set() # 通知 _sentence_worker_manager 停止
 
-        # 清空队列，帮助 manager_thread 退出 get() 调用
-        # 注意：这可能导致正在处理的任务丢失，但对于关闭是必要的
-        while not task_queue.empty():
-            try:
-                # 从优先级队列中取出项，它是一个元组 (priority, item)
-                _ = task_queue.get_nowait() # 取出但不处理
-                task_queue.task_done()
-            except queue.Empty:
-                break
-            except Exception as e:
-                print(f"Error clearing queue during stop: {e}")
-                break
+    # 清空队列
+    while not task_queue.empty():
+        try:
+            _ = task_queue.get_nowait()
+            task_queue.task_done()
+        except queue.Empty:
+            break
+        except Exception as e:
+            print(f"Error clearing queue during stop: {e}")
+            break
 
-        # 等待 manager_thread 结束
-        if manager_thread and manager_thread.is_alive():
-            manager_thread.join(timeout=5) # 等待管理器线程结束
-            if manager_thread.is_alive():
-                print("WARNING: Sentence worker manager thread did not stop gracefully.")
-
-        # 关闭线程池
-        # shutdown(wait=True) 会等待所有已提交的任务完成
-        # shutdown(wait=False) 会尝试取消待处理的任务并立即返回
-        # 我们希望尽快关闭，但也要给正在运行的任务一点时间
-        executor.shutdown(wait=True, cancel_futures=False) # 等待当前任务完成，不取消
-        print("DEBUG: Thread pool shutdown complete.")
-        executor = None
-        manager_thread = None # 清理 manager_thread 引用
+    # 等待 manager_thread 结束
+    if manager_thread and manager_thread.is_alive():
+        manager_thread.join(timeout=5)
+        if manager_thread.is_alive():
+            print("WARNING: Sentence worker manager thread did not stop gracefully.")
+    
+    # 关闭高优先级线程池
+    if high_prio_executor:
+        high_prio_executor.shutdown(wait=True, cancel_futures=False)
+        print("DEBUG: High-priority thread pool shutdown complete.")
+        high_prio_executor = None
+        
+    # 关闭低优先级线程池
+    if low_prio_executor:
+        low_prio_executor.shutdown(wait=True, cancel_futures=False)
+        print("DEBUG: Low-priority thread pool shutdown complete.")
+        low_prio_executor = None
+        
+    manager_thread = None # 清理 manager_thread 引用
+    
+    if high_prio_executor is None and low_prio_executor is None:
+        print("DEBUG: All workers stopped and cleaned up.")
     else:
-        print("DEBUG: Worker (executor) not running or already stopped.")
+        print("DEBUG: Worker (executors) not running or already stopped, or cleanup issue.")
 
 
 def register_hooks():
