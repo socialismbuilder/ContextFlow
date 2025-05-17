@@ -28,6 +28,7 @@ low_prio_executor = None  # 用于低优先级任务
 # showing_sentence 和 showing_translation 仍然需要，用于跨 question/answer 状态传递
 showing_sentence = ""
 showing_translation = ""
+upcoming_cards_cache = []  # 全局缓存，存储排序后的新卡片关键词列表
 # _processing_card_id 和 _processing_keyword 不再需要
 
 def _process_keyword_task(keyword_with_priority):
@@ -96,6 +97,8 @@ def _sentence_worker_manager():
 
 
 def get_upcoming_cards(card):
+
+
     config = get_config()
     deck_name = config.get("deck_name")
     #print(f"目标牌组: {deck_name}")
@@ -106,35 +109,100 @@ def get_upcoming_cards(card):
     review_keywords = []
 
 
-    # Get new cards, compare first and last due, take 3 from the smaller end
-    new_query = f"deck:{deck_name} is:new"
-    all_new_card_ids = mw.col.find_cards(new_query)  # Get all new card IDs
+    # 优化后的缓存逻辑
+    global upcoming_cards_cache  # 声明使用全局缓存
 
-    selected_card_ids_for_new = []
-    if len(all_new_card_ids) <= 3:
-        selected_card_ids_for_new = all_new_card_ids
+    # 初始化new_keywords
+    new_keywords = []
+
+    # 检查缓存是否存在（非空）
+    if upcoming_cards_cache:
+        print("成功获取缓存")
+        # 获取当前卡片的keyword（用于查找缓存位置）
+        current_raw_keyword = card.note().fields[0] if card.note().fields else ""
+        current_keyword = re.sub('<.*?>', '', current_raw_keyword)  # 移除HTML标签
+        current_keyword = re.sub('\[.*?\]', '', current_keyword).strip()  # 移除声音标签并去空格
+
+        # 查找当前keyword在缓存中的位置
+        try:
+            index = upcoming_cards_cache.index(current_keyword)
+            # 取缓存中当前位置之后的三个关键词（最多三个）
+            new_keywords = upcoming_cards_cache[index+1:index+4]
+        except ValueError:
+            # 缓存中找不到当前keyword，清空缓存并重置new_keywords
+            upcoming_cards_cache = []
+            new_keywords = []
     else:
-        first_card_id = all_new_card_ids[0]
-        last_card_id = all_new_card_ids[-1]
+        print("未获取缓存")
+        # 缓存不存在，启动异步排序并显示进度条
+        new_query = f"deck:{deck_name} is:new"
+        all_new_card_ids = mw.col.find_cards(new_query)  # 获取所有新卡片ID
+        all_new_cards = [mw.col.get_card(cid) for cid in all_new_card_ids]  # 提前获取卡片对象
         
-        first_card_due = mw.col.get_card(first_card_id).due
-        last_card_due = mw.col.get_card(last_card_id).due
+        # 启动进度条
+        mw.progress.start(
+            immediate=True,
+            label="正在排序新卡片...",
+            min=0,
+            max=100
+        )
         
-        if first_card_due <= last_card_due:
-            selected_card_ids_for_new = all_new_card_ids[:3]
-        else:
-            selected_card_ids_for_new = all_new_card_ids[-3:]
+        # 定义异步排序任务
+        def async_sort():
+            return sorted(all_new_cards, key=lambda c: c.due)  # 按due升序排序
 
-    for card_id in selected_card_ids_for_new:
-        card = mw.col.get_card(card_id)
-        # Extract and clean keyword
-        raw_keyword = card.note().fields[0] if card.note().fields else ""
-        keyword = re.sub('<.*?>', '', raw_keyword)  # Remove HTML tags
-        keyword = re.sub('\[.*?\]', '', keyword)  # Remove sound tags
-        keyword = keyword.strip()
-        if keyword: # Ensure keyword is not empty after cleaning
-            new_keywords.append(keyword)
-        new_keywords.reverse()
+        # 提交到高优先级线程池
+        future = high_prio_executor.submit(async_sort)
+        
+        # 使用QTimer轮询排序状态
+        timer = QTimer()
+        start_time = time.time()
+        max_wait = 30  # 最大等待30秒
+
+        def check_sort_complete():
+            nonlocal timer
+            if future.done():
+                timer.stop()
+                mw.progress.finish()
+                try:
+                    sorted_new_cards = future.result()
+                    # 处理排序后的卡片，生成并缓存关键词
+                    upcoming_cards_cache.clear()
+                    for c in sorted_new_cards:
+                        raw_keyword = c.note().fields[0] if c.note().fields else ""
+                        keyword = re.sub('<.*?>', '', raw_keyword)  # 移除HTML标签
+                        keyword = re.sub('\[.*?\]', '', keyword)  # 移除声音标签
+                        keyword = keyword.strip()
+                        if keyword:  # 过滤空关键词
+                            upcoming_cards_cache.append(keyword)
+                    # 初始加载时取前三个关键词作为new_keywords
+                    nonlocal new_keywords
+                    new_keywords = upcoming_cards_cache[:3]
+                except Exception as e:
+                    print(f"排序过程中发生错误: {str(e)}")
+                    new_keywords = []
+                return
+
+            # 进度条更新（简单线性进度）
+            elapsed = time.time() - start_time
+            progress = int((elapsed / max_wait) * 100)
+            mw.progress.update(
+                label=f"正在排序新卡片... ({min(int(elapsed), max_wait)}秒/{max_wait}秒)",
+                value=min(progress, 100)
+            )
+
+            # 超时处理
+            if elapsed >= max_wait:
+                timer.stop()
+                mw.progress.finish()
+                print("警告：新卡片排序超时")
+                new_keywords = []
+
+        # 启动定时器检查排序状态（每100ms检查一次）
+        timer.timeout.connect(check_sort_complete)
+        timer.start(100)
+    
+    print(new_keywords)
 
     # Get 3 learning cards
     learning_query = f"deck:{deck_name} is:learn"
@@ -462,7 +530,6 @@ def stop_worker():
         print("DEBUG: All workers stopped and cleaned up.")
     else:
         print("DEBUG: Worker (executors) not running or already stopped, or cleanup issue.")
-
 
 def register_hooks():
     """注册所有需要的钩子，并启动工作线程"""
