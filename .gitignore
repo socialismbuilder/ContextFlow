@@ -1,0 +1,7 @@
+# 默认忽略的文件
+/shelf/
+/workspace.xml
+__pycache__/
+.idea/
+sentence_cache.json
+meta.json
