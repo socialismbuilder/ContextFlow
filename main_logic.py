@@ -550,3 +550,4 @@ def register_hooks():
     gui_hooks.profile_did_open.append(start_worker)
 
     start_worker() # 启动工作线程
+#测试
