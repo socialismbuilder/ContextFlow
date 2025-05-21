@@ -167,22 +167,13 @@ class ConfigDialog(QDialog):
         api_group = QGroupBox("API 设置")
         api_layout = QFormLayout()
 
-        # API 供应商组合框
-        self.add_api_provider_combo(api_layout,current_config)
+        # 添加API设置组件
+        self.add_api_setting(api_layout,current_config)
 
         # Test API Button and Status Label
-        self.test_connection_button = QPushButton("测试 API 连接")
-        self.test_connection_button.clicked.connect(self._test_api_connection)
-        self.test_status_label = QLabel("点击按钮测试连接状态")
-        self.test_status_label.setWordWrap(True)
-
-        test_layout = QHBoxLayout()
-        test_layout.addWidget(self.test_connection_button)
-        test_layout.addWidget(self.test_status_label)
-        api_layout.addRow(test_layout) # 将按钮和标签添加到表单布局的一行
-
         api_group.setLayout(api_layout)
         basic_layout.addWidget(api_group)
+
 
         # --- 句子生成偏好设置组 ---
         prefs_group = QGroupBox("句子生成偏好")
@@ -329,7 +320,8 @@ class ConfigDialog(QDialog):
 
         main_layout.addLayout(button_layout) # 添加按钮布局
 
-    def add_api_provider_combo(self,api_layout,current_config):
+    def add_api_setting(self,api_layout,current_config):
+        #api供应商与url组件
         self.api_provider_combo = QComboBox()
         self.api_provider_combo.addItems(PRESET_API_URLS.keys())
         api_layout.addRow("API 提供商:", self.api_provider_combo)
@@ -352,16 +344,29 @@ class ConfigDialog(QDialog):
 
         self._on_api_provider_changed() # 根据 combo 初始化 URL 状态
         self.api_url.setText(saved_api_url) # 确保加载已保存的URL，即使是自定义的
-
         self.api_provider_combo.currentTextChanged.connect(self._on_api_provider_changed)
 
+        #API密钥填写框
         self.api_key = QLineEdit(current_config.get("api_key", ""))
         self.api_key.setEchoMode(QLineEdit.EchoMode.Password)
         api_layout.addRow("API 密钥:", self.api_key)
 
+        #模型名称填写框
         self.model_name = QLineEdit(current_config.get("model_name", ""))
         api_layout.addRow("模型名称:", self.model_name)
-    
+
+        #测试连接按钮
+        self.test_connection_button = QPushButton("测试 API 连接")
+        self.test_connection_button.clicked.connect(self._test_api_connection)
+        self.test_status_label = QLabel("点击按钮测试连接状态")
+        self.test_status_label.setWordWrap(True)
+
+        #文本框
+        test_layout = QHBoxLayout()
+        test_layout.addWidget(self.test_connection_button)
+        test_layout.addWidget(self.test_status_label)
+        api_layout.addRow(test_layout) # 将按钮和标签添加到表单布局的一行
+
 
     def setup_prompt_template_tab(self, layout, config):
         """设置提示词模板编辑选项卡"""
