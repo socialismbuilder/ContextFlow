@@ -1,10 +1,13 @@
 import time # 用于超时控制
 import traceback # 用于打印更详细的错误信息
+import os
+import json
 
 import aqt
 from aqt.qt import (
     QDialog, QVBoxLayout, QFormLayout, QLabel, QLineEdit, QPushButton, QComboBox,
-    QGroupBox, QHBoxLayout, QWidget, QDialogButtonBox, QMessageBox, QApplication
+    QGroupBox, QHBoxLayout, QWidget, QDialogButtonBox, QMessageBox, QApplication,
+    QTabWidget, QTextEdit, QSplitter, Qt
 )
 from .config_manager import get_config, save_config # 使用相对导入
 from .cache_manager import clear_cache
@@ -14,7 +17,7 @@ from . import api_client # 导入 api_client 以便调用测试函数
 PRESET_API_URLS = {
     "火山/豆包/字节（推荐）": "https://ark.cn-beijing.volces.com/api/v3/chat/completions",
     "deepseek": "https://api.deepseek.com/v1/chat/completions",
-    "OpenRouter": "https://openrouter.ai/api/v1/chat/completions", 
+    "OpenRouter": "https://openrouter.ai/api/v1/chat/completions",
     "硅基流动": "https://api.siliconflow.cn/v1/chat/completions",
     "Moonshot AI (Kimi)": "https://api.moonshot.cn/v1/chat/completions",
     "阿里云百练": "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions",
@@ -135,11 +138,31 @@ class ConfigDialog(QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setWindowTitle("AI句子生成配置")
-        self.setMinimumWidth(450) # 调整最小宽度以容纳新控件
+        self.setMinimumWidth(650) # 增加宽度以容纳提示词模板编辑区域
+        self.setMinimumHeight(600) # 增加高度以容纳提示词模板编辑区域
 
         main_layout = QVBoxLayout(self)
         current_config = get_config()
 
+        # 创建选项卡控件
+        self.tab_widget = QTabWidget()
+
+        # 创建基本设置选项卡
+        self.basic_tab = QWidget()
+        basic_layout = QVBoxLayout(self.basic_tab)
+
+        # 创建提示词模板选项卡
+        self.prompt_tab = QWidget()
+        prompt_layout = QVBoxLayout(self.prompt_tab)
+
+        # 添加选项卡到选项卡控件
+        self.tab_widget.addTab(self.basic_tab, "基本设置")
+        self.tab_widget.addTab(self.prompt_tab, "提示词模板")
+
+        # 将选项卡控件添加到主布局
+        main_layout.addWidget(self.tab_widget)
+
+        # 在基本设置选项卡中添加API设置组
         api_group = QGroupBox("API 设置")
         api_layout = QFormLayout()
 
@@ -188,7 +211,7 @@ class ConfigDialog(QDialog):
         api_layout.addRow(test_layout) # 将按钮和标签添加到表单布局的一行
 
         api_group.setLayout(api_layout)
-        main_layout.addWidget(api_group)
+        basic_layout.addWidget(api_group)
 
         # --- 句子生成偏好设置组 ---
         prefs_group = QGroupBox("句子生成偏好")
@@ -268,7 +291,7 @@ class ConfigDialog(QDialog):
         self._toggle_custom_widget(self.length_combo, self.length_custom, prefs_layout)
 
         prefs_group.setLayout(prefs_layout)
-        main_layout.addWidget(prefs_group)
+        basic_layout.addWidget(prefs_group)
 
         # --- 其他设置 ---
         other_group = QGroupBox("其他")
@@ -287,7 +310,7 @@ class ConfigDialog(QDialog):
             self.learning_language_combo.setCurrentText(saved_language)
         else: # 如果保存的语言不在列表中，默认选择英语
             self.learning_language_combo.setCurrentText("英语")
-        
+
         # 是否标出目标词下拉选框
         self.highlight_target_word_combo = QComboBox()
         self.highlight_target_word_combo.addItems(["否", "是"]) # 存储时 "是" -> True, "否" -> False
@@ -315,7 +338,10 @@ class ConfigDialog(QDialog):
 
 
         other_group.setLayout(other_layout)
-        main_layout.addWidget(other_group)
+        basic_layout.addWidget(other_group)
+
+        # 添加提示词模板编辑区域
+        self.setup_prompt_template_tab(prompt_layout, current_config)
 
         # --- 按钮 ---
         button_box = QDialogButtonBox(QDialogButtonBox.StandardButton.Save | QDialogButtonBox.StandardButton.Cancel)
@@ -331,6 +357,217 @@ class ConfigDialog(QDialog):
         button_layout.addWidget(button_box) # 标准按钮盒
 
         main_layout.addLayout(button_layout) # 添加按钮布局
+
+    def setup_prompt_template_tab(self, layout, config):
+        """设置提示词模板编辑选项卡"""
+        # 提示词模板编辑区域
+        prompt_group = QGroupBox("提示词模板编辑")
+        prompt_layout = QVBoxLayout()
+
+        # 提示词模板说明
+        help_label = QLabel("提示词模板用于生成AI例句。可以使用以下占位符：")
+        help_label.setWordWrap(True)
+        prompt_layout.addWidget(help_label)
+
+        # 占位符说明
+        placeholders_label = QLabel(
+            "{world}: 关键词\n"
+            "{language}: 学习语言\n"
+            "{vocab_level}: 词汇量等级\n"
+            "{learning_goal}: 学习目标\n"
+            "{difficulty_level}: 句子难度\n"
+            "{sentence_length_desc}: 句子长度"
+        )
+        prompt_layout.addWidget(placeholders_label)
+
+        # 主提示词模板编辑区
+        prompt_label = QLabel("主提示词模板:")
+        prompt_layout.addWidget(prompt_label)
+
+        self.prompt_template_edit = QTextEdit()
+        self.prompt_template_edit.setMinimumHeight(200)
+        self.prompt_template_edit.setText(config.get("prompt_template", api_client.DEFAULT_PROMPT_TEMPLATE))
+        prompt_layout.addWidget(self.prompt_template_edit)
+
+        # 格式示例编辑区
+        format_layout = QHBoxLayout()
+
+        # 普通格式示例
+        normal_format_layout = QVBoxLayout()
+        normal_format_label = QLabel("普通格式示例:")
+        normal_format_layout.addWidget(normal_format_label)
+
+        self.normal_format_edit = QTextEdit()
+        self.normal_format_edit.setMinimumHeight(150)
+        self.normal_format_edit.setText(config.get("prompt_format_normal", api_client.DEFAULT_FORMAT_NORMAL))
+        normal_format_layout.addWidget(self.normal_format_edit)
+
+        # 高亮格式示例
+        highlight_format_layout = QVBoxLayout()
+        highlight_format_label = QLabel("高亮格式示例:")
+        highlight_format_layout.addWidget(highlight_format_label)
+
+        self.highlight_format_edit = QTextEdit()
+        self.highlight_format_edit.setMinimumHeight(150)
+        self.highlight_format_edit.setText(config.get("prompt_format_highlight", api_client.DEFAULT_FORMAT_HIGHLIGHT))
+        highlight_format_layout.addWidget(self.highlight_format_edit)
+
+        # 添加两个格式编辑区到水平布局
+        format_layout.addLayout(normal_format_layout)
+        format_layout.addLayout(highlight_format_layout)
+
+        prompt_layout.addLayout(format_layout)
+
+        # 测试区域
+        test_group = QGroupBox("提示词测试")
+        test_layout = QVBoxLayout()
+
+        # 测试输入区域
+        test_input_layout = QHBoxLayout()
+
+        # 关键词输入
+        keyword_layout = QVBoxLayout()
+        keyword_label = QLabel("测试关键词:")
+        keyword_layout.addWidget(keyword_label)
+
+        self.test_keyword_edit = QLineEdit()
+        self.test_keyword_edit.setText("example")
+        keyword_layout.addWidget(self.test_keyword_edit)
+
+        # 测试模式选择
+        test_mode_layout = QHBoxLayout()
+        test_mode_label = QLabel("测试模式:")
+        test_mode_layout.addWidget(test_mode_label)
+
+        self.test_mode_combo = QComboBox()
+        self.test_mode_combo.addItems(["生成例句", "查看提示词"])
+        test_mode_layout.addWidget(self.test_mode_combo)
+
+        keyword_layout.addLayout(test_mode_layout)
+
+        # 测试按钮
+        self.test_prompt_button = QPushButton("测试")
+        self.test_prompt_button.clicked.connect(self.test_prompt_template)
+        keyword_layout.addWidget(self.test_prompt_button)
+
+        # 添加关键词输入区域到测试输入布局
+        test_input_layout.addLayout(keyword_layout)
+
+        # 测试结果显示区域
+        test_result_label = QLabel("测试结果:")
+        test_layout.addWidget(test_result_label)
+
+        self.test_result_edit = QTextEdit()
+        self.test_result_edit.setReadOnly(True)
+        self.test_result_edit.setMinimumHeight(150)
+        test_layout.addWidget(self.test_result_edit)
+
+        # 添加测试输入布局到测试布局
+        test_layout.addLayout(test_input_layout)
+
+        # 设置测试组布局
+        test_group.setLayout(test_layout)
+
+        # 设置提示词模板组布局
+        prompt_group.setLayout(prompt_layout)
+
+        # 添加到主布局
+        layout.addWidget(prompt_group)
+        layout.addWidget(test_group)
+
+    def test_prompt_template(self):
+        """测试提示词模板"""
+        keyword = self.test_keyword_edit.text()
+        if not keyword:
+            self.test_result_edit.setText("请输入测试关键词")
+            return
+
+        # 获取当前编辑的提示词模板
+        prompt_template = self.prompt_template_edit.toPlainText()
+        normal_format = self.normal_format_edit.toPlainText()
+        highlight_format = self.highlight_format_edit.toPlainText()
+
+        # 获取当前配置
+        config = get_config()
+
+        # 创建临时配置用于测试
+        test_config = {
+            "api_url": config.get("api_url", ""),
+            "api_key": config.get("api_key", ""),
+            "model_name": config.get("model_name", ""),
+            "vocab_level": config.get("vocab_level", "大学英语四级 CET-4 (4000词)"),
+            "learning_goal": config.get("learning_goal", "提升日常浏览英文网页与资料的流畅度"),
+            "difficulty_level": config.get("difficulty_level", "中级 (B1): 并列/简单复合句，稍复杂话题，扩大词汇范围"),
+            "sentence_length_desc": config.get("sentence_length_desc", "中等长度句 (约25-40词): 通用对话及文章常用长度"),
+            "learning_language": config.get("learning_language", "英语"),
+            "highlight_target_word": config.get("highlight_target_word", False),
+            "prompt_template": prompt_template,
+            "prompt_format_normal": normal_format,
+            "prompt_format_highlight": highlight_format
+        }
+
+        # 获取测试模式
+        test_mode = self.test_mode_combo.currentText()
+
+        # 如果是查看提示词模式
+        if test_mode == "查看提示词":
+            try:
+                # 根据是否高亮目标词选择不同的格式示例
+                if test_config["highlight_target_word"]:
+                    prompt = prompt_template + highlight_format
+                else:
+                    prompt = prompt_template + normal_format
+
+                # 格式化提示词
+                formatted_prompt = prompt.format(
+                    world=keyword,
+                    vocab_level=test_config["vocab_level"],
+                    learning_goal=test_config["learning_goal"],
+                    difficulty_level=test_config["difficulty_level"],
+                    sentence_length_desc=test_config["sentence_length_desc"],
+                    language=test_config["learning_language"]
+                )
+
+                # 显示格式化后的提示词
+                self.test_result_edit.setText(formatted_prompt)
+            except Exception as e:
+                self.test_result_edit.setText(f"提示词格式化错误: {str(e)}")
+            return
+
+        # 如果是生成例句模式，需要检查API配置
+        if not test_config["api_url"] or not test_config["api_key"] or not test_config["model_name"]:
+            self.test_result_edit.setText("错误: 请先在基本设置中配置API信息（URL、密钥和模型名称）")
+            return
+
+        # 显示正在测试的提示
+        self.test_result_edit.setText("正在生成例句，请稍候...")
+        self.test_prompt_button.setEnabled(False)
+        QApplication.processEvents() # 确保UI更新
+
+        try:
+            # 调用API生成例句
+            sentence_pairs = api_client.generate_ai_sentence(test_config, keyword)
+
+            if not sentence_pairs:
+                self.test_result_edit.setText("未能生成例句，请检查API配置和提示词模板")
+                self.test_prompt_button.setEnabled(True)
+                return
+
+            # 格式化结果显示
+            result_text = f"关键词 '{keyword}' 的例句测试结果：\n\n"
+
+            for i, (sentence, translation) in enumerate(sentence_pairs, 1):
+                result_text += f"例句 {i}:\n{sentence}\n\n翻译:\n{translation}\n\n"
+
+            # 显示结果
+            self.test_result_edit.setText(result_text)
+
+        except Exception as e:
+            self.test_result_edit.setText(f"测试错误: {str(e)}")
+            traceback.print_exc() # 打印详细错误信息到控制台
+        finally:
+            self.test_prompt_button.setEnabled(True)
+            QApplication.processEvents() # 确保UI更新
 
     def _on_api_provider_changed(self):
         """当API提供商选择变化时调用"""
@@ -362,7 +599,7 @@ class ConfigDialog(QDialog):
             # 调用 api_client.py 中的同步测试函数
             # test_api_sync(api_url, api_key, model_name, timeout_seconds)
             result_text, error_message = api_client.test_api_sync(
-                api_url, api_key, model_name, timeout_seconds=30 
+                api_url, api_key, model_name, timeout_seconds=30
             )
             #输出result_text
             print("输出结果：", result_text)
@@ -424,7 +661,7 @@ class ConfigDialog(QDialog):
             if item and item.widget() == combo_box:
                 combo_row = i
                 break
-        
+
         custom_widget_current_row = -1
         if custom_widget: # 检查 custom_widget 是否已在布局中
             for i in range(form_layout.rowCount()):
@@ -433,7 +670,7 @@ class ConfigDialog(QDialog):
                 if field_item and field_item.widget() == custom_widget:
                     custom_widget_current_row = i
                     break
-        
+
         if is_custom:
             if custom_widget:
                 custom_widget.setVisible(True)
@@ -458,7 +695,7 @@ class ConfigDialog(QDialog):
         """通用处理函数：处理下拉框变化，创建或显示/隐藏自定义输入框"""
         is_custom_selected = (combo_box.currentText() == "自定义")
         custom_widget = getattr(self, custom_attr_name, None)
-        
+
         if is_custom_selected:
             if custom_widget is None: # 首次选择自定义，创建输入框
                 custom_widget = QLineEdit()
@@ -519,7 +756,7 @@ class ConfigDialog(QDialog):
         # else:
         #     api_url_to_save = PRESET_API_URLS.get(selected_provider, "")
         # 直接读取 self.api_url.text() 即可，因为 _on_api_provider_changed 已经更新了它
-        
+
         new_config = {
             "api_url": self.api_url.text(), # api_url 文本框的值在选择预设时已更新或在自定义时可编辑
             "api_key": self.api_key.text(),
@@ -531,6 +768,10 @@ class ConfigDialog(QDialog):
             "sentence_length_desc": self._get_combo_value(self.length_combo, getattr(self, 'length_custom', None)),
             "learning_language": self.learning_language_combo.currentText(),
             "highlight_target_word": self.highlight_target_word_combo.currentText() == "是",
+            # 保存提示词模板设置
+            "prompt_template": self.prompt_template_edit.toPlainText(),
+            "prompt_format_normal": self.normal_format_edit.toPlainText(),
+            "prompt_format_highlight": self.highlight_format_edit.toPlainText(),
         }
         save_config(new_config) # 调用 config_manager 中的保存函数
         QMessageBox.information(self, "成功", "配置已保存。") # 提示用户

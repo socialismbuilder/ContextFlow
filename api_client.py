@@ -7,7 +7,8 @@ import typing # Add typing for Optional
 import re
 # Configuration details are dynamically loaded from user settings via config_manager
 
-prompt1 = '''
+# 默认提示词模板 - 现在从配置中读取
+DEFAULT_PROMPT_TEMPLATE = '''
 请为{language}学习者生成5个包含关键词 ‘{world}’ 的{language}例句，并附带中文翻译。
 
 学习者信息：
@@ -17,11 +18,13 @@ prompt1 = '''
 - 句子最大长度:{sentence_length_desc}
 
 例句生成规则：
-- 难度控制原则：评估关键词 '{world}' 的固有难度，与设定的目标句子难度，生成的句子整体难度必须同时低于关键词的固有难度和设定的目标难度。
-- 提供的关键词 '{world}' 是一个完整的词汇。它可以是原形、复数、过去式等屈折形式，或作为组合词的一部分，但不能是该词根衍生的其他词汇。
-（例如，如果关键词是 "book"，例句中可以使用 "books" 或 "notebook" 中的 "book" 部分，前提是notebook的book代表着原本含义）
-- 绝对禁止将关键词用作前后缀来构成一个不同的词汇，或使用与关键词同根但意义完全不同的衍生词。
-（例如，给出关键词book,例句不能使用booking;给出king，例句不能使用kingdom）
+- 生成的句子难度应同时低于关键词的固有难度与设定目标
+-  难度确定：
+    a.  首先评估关键词 ‘{world}’ 的固有难度级别。
+    b.  若 ‘{world}’ 难度低于句子难度目标，则句子整体难度应低于 ‘{world}’ 的难度，确保句子中无更难词汇，帮助学习者理解关键词。
+    c.  若 ‘{world}’ 难度 高于难度目标，则句子整体难度应低于设定目标。
+-  词汇控制：根据规则1确定的句子目标难度，应当同时低于关键词难度于目标难度。
+-  简单词处理：若 ‘{world}’ 为基础词汇，无视句子的目标难度和目标长度，生成简短、基础的句子，绝对不要输出难度高于关键词的句子。
 - 语境应尽量与学习目标 ({learning_goal}) 相关，或者为通用场景。
 - 每个例句必须包含关键词 ‘{world}’。
 - 5个例句应尽量全面的覆盖关键词的各种用法和含义。
@@ -37,7 +40,8 @@ prompt1 = '''
 - **绝对不要** 输出任何其他内容，如序号、标题、解释或额外字段
 - 必须以`sentences`命名变量，而不是{world}'''
 
-prompt21 = '''
+# 默认格式示例 - 普通版本
+DEFAULT_FORMAT_NORMAL = '''
 
 示例JSON输出：
 {{
@@ -57,8 +61,8 @@ prompt21 = '''
 示例仅为格式参考。语言，难度，句子长度等信息请按照生成规则。请严格按照上述要求生成。
 '''
 
-
-prompt22 = '''
+# 默认格式示例 - 高亮版本
+DEFAULT_FORMAT_HIGHLIGHT = '''
 - 翻译需要自然准确，并在关键词前后，以及翻译的对应或相关部分，加上<u>标签强调显示。
 示例JSON输出：
 {{
@@ -103,14 +107,19 @@ def generate_ai_sentence(config, keyword):
     learning_goal = config.get("learning_goal", DEFAULT_CONFIG["learning_goal"])
     difficulty_level = config.get("difficulty_level", DEFAULT_CONFIG["difficulty_level"])
     sentence_length_desc = config.get("sentence_length_desc", DEFAULT_CONFIG["sentence_length_desc"])
-    learning_language = config.get("learning_language",DEFAULT_CONFIG["learning_language"])
+    learning_language = config.get("learning_language", DEFAULT_CONFIG["learning_language"])
 
-    highlight_target_word = config.get("highlight_target_word",DEFAULT_CONFIG["highlight_target_word"])
+    # 从配置中读取提示词模板，如果没有则使用默认值
+    prompt_template = config.get("prompt_template", DEFAULT_PROMPT_TEMPLATE)
+    prompt_format_normal = config.get("prompt_format_normal", DEFAULT_FORMAT_NORMAL)
+    prompt_format_highlight = config.get("prompt_format_highlight", DEFAULT_FORMAT_HIGHLIGHT)
 
+    # 根据是否高亮目标词选择不同的格式示例
+    highlight_target_word = config.get("highlight_target_word", DEFAULT_CONFIG["highlight_target_word"])
     if highlight_target_word:
-        prompt = prompt1+prompt22
+        prompt = prompt_template + prompt_format_highlight
     else:
-        prompt = prompt1+prompt21
+        prompt = prompt_template + prompt_format_normal
 
     if not api_url or not api_key or not model_name:
         raise ValueError("API URL, Key, or Model Name missing in config.")
@@ -123,7 +132,7 @@ def generate_ai_sentence(config, keyword):
         sentence_length_desc=sentence_length_desc,
         language = learning_language
     )
-    
+
     try:
         response = requests.post(
             api_url,
@@ -145,7 +154,7 @@ def generate_ai_sentence(config, keyword):
         except (KeyError, IndexError, json.JSONDecodeError) as e:
             print(f"错误：[generate_ai_sentence] 无法从API响应中提取/解析内容，关键词：'{keyword}'。错误：{e}。响应文本：{response.text[:500]}")
             #用户不应该看到报错，raise都注释掉
-            #raise ValueError(f"API响应格式错误：{e}") from e 
+            #raise ValueError(f"API响应格式错误：{e}") from e
 
         # Parse the nested JSON content
         try:
@@ -209,7 +218,7 @@ def test_api_sync(
     payload = {
         "model": model_name,
         "messages": [{"role": "user", "content": "不要有任何多余其他输出，重复一遍这个词: Hello"}],
-        "max_tokens": 50  
+        "max_tokens": 50
     }
 
     try:
@@ -232,7 +241,7 @@ def test_api_sync(
             return None, f"API错误 {response.status_code}: {error_msg_detail[:200]}" # 限制错误信息长度
 
         response_json = response.json()
-        
+
         # 提取内容 - 这种结构对于类OpenAI的API是常见的
         # 如果目标API具有不同的响应结构，请进行调整
         if response_json.get("choices") and \
@@ -241,7 +250,7 @@ def test_api_sync(
            response_json["choices"][0].get("message") and \
            isinstance(response_json["choices"][0]["message"], dict) and \
            response_json["choices"][0]["message"].get("content"):
-            
+
             content = response_json["choices"][0]["message"]["content"]
             return content.strip(), None # 返回提取到的内容
         else:
