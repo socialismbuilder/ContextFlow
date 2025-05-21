@@ -163,17 +163,8 @@ class ConfigDialog(QDialog):
         # 将选项卡控件添加到主布局
         main_layout.addWidget(self.tab_widget)
 
-        # 在基本设置选项卡中添加API设置组
-        api_group = QGroupBox("API 设置")
-        api_layout = QFormLayout()
-
-        # 添加API设置组件
-        self.add_api_setting(api_layout,current_config)
-
-        # Test API Button and Status Label
-        api_group.setLayout(api_layout)
-        basic_layout.addWidget(api_group)
-
+        # --- API配置设置组 ---
+        self.add_api_setting(basic_layout,current_config)
 
         # --- 句子生成偏好设置组 ---
         prefs_group = QGroupBox("句子生成偏好")
@@ -217,7 +208,6 @@ class ConfigDialog(QDialog):
 
         # 句子难度选择
         self.difficulty_combo = QComboBox()
-        #preset_difficulties = ["初级 (A1-A2)", "中级 (B1)", "中高级 (B2-C1)", "自定义"]
 
 
 
@@ -320,7 +310,13 @@ class ConfigDialog(QDialog):
 
         main_layout.addLayout(button_layout) # 添加按钮布局
 
-    def add_api_setting(self,api_layout,current_config):
+
+    def add_api_setting(self,basic_layout,current_config):
+        api_group = QGroupBox("API 设置")
+        api_layout = QFormLayout()
+        # 添加API设置组件
+
+
         #api供应商与url组件
         self.api_provider_combo = QComboBox()
         self.api_provider_combo.addItems(PRESET_API_URLS.keys())
@@ -366,6 +362,10 @@ class ConfigDialog(QDialog):
         test_layout.addWidget(self.test_connection_button)
         test_layout.addWidget(self.test_status_label)
         api_layout.addRow(test_layout) # 将按钮和标签添加到表单布局的一行
+
+        # 设置组件生效
+        api_group.setLayout(api_layout)
+        basic_layout.addWidget(api_group)
 
 
     def setup_prompt_template_tab(self, layout, config):
