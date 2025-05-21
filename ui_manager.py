@@ -118,7 +118,6 @@ preset_difficulties = [
 ]
 
 # 句子长度选择列表
-
 preset_lengths = [
     # 按单词数量细分，并关联典型语境
     "极短句 (约5-10词): 适合标题、指令或极简表达",
@@ -139,8 +138,8 @@ class ConfigDialog(QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setWindowTitle("AI例句配置")
-        self.setMinimumWidth(650) # 增加宽度以容纳提示词模板编辑区域
-        self.setMinimumHeight(600) #高度自适应，不做限制
+        #self.setMinimumWidth(650) # 增加宽度以容纳提示词模板编辑区域
+        #self.setMinimumHeight(600) #高度自适应，不做限制
 
         main_layout = QVBoxLayout(self)
         current_config = get_config()
@@ -162,77 +161,29 @@ class ConfigDialog(QDialog):
 
         # 将选项卡控件添加到主布局
         main_layout.addWidget(self.tab_widget)
+        
 
         # --- API配置设置组 ---
         self.add_api_setting(basic_layout,current_config)
 
         # --- 句子生成偏好设置组 ---
         self.add_Preferences_setting(basic_layout,current_config)
-        
+
         # --- 其他设置 ---
-        other_group = QGroupBox("其他")
-        other_layout = QFormLayout()
+        self.add_othersetting(basic_layout,current_config)
 
-        self.deck_name = QLineEdit(current_config.get("deck_name", ""))
-        other_layout.addRow("目标牌组名称:", self.deck_name)
-
-        # 学习语言下拉选框
-        self.learning_language_combo = QComboBox()
-        # 常见语言列表，可以根据需要扩展
-        languages = ["英语", "法语", "日语", "西班牙语", "德语", "韩语", "俄语", "意大利语", "葡萄牙语", "阿拉伯语", "印地语"]
-        self.learning_language_combo.addItems(languages)
-        saved_language = current_config.get("learning_language", "英语")
-        if saved_language in languages:
-            self.learning_language_combo.setCurrentText(saved_language)
-        else: # 如果保存的语言不在列表中，默认选择英语
-            self.learning_language_combo.setCurrentText("英语")
-
-        # 是否标出目标词下拉选框
-        self.highlight_target_word_combo = QComboBox()
-        self.highlight_target_word_combo.addItems(["否", "是"]) # 存储时 "是" -> True, "否" -> False
-        saved_highlight = current_config.get("highlight_target_word", False) # 默认为 False
-        self.highlight_target_word_combo.setCurrentText("是" if saved_highlight else "否")
-
-        # 创建一个水平布局来放置这两个下拉框
-        learning_options_layout = QHBoxLayout()
-        learning_options_layout.addWidget(QLabel("学习语言:")) # 添加标签
-        learning_options_layout.addWidget(self.learning_language_combo)
-        learning_options_layout.addSpacing(20) # 添加一些间距
-        learning_options_layout.addWidget(QLabel("标出目标词:")) # 添加标签
-        learning_options_layout.addWidget(self.highlight_target_word_combo)
-        learning_options_layout.addStretch() # 确保控件靠左
-
-        # 将水平布局添加到表单布局中
-        # QFormLayout 通常期望一个标签和一个字段。为了将 QHBoxLayout 作为“字段”部分，
-        # 我们可以直接添加它，或者如果需要一个总标签，可以这样做：
-        # other_layout.addRow("学习选项:", learning_options_layout)
-        # 但如果希望这两个控件在同一行且 QFormLayout 的标签栏为空或用于其他目的，
-        # 我们可以将 QHBoxLayout 添加到一个 QWidget 中，然后将该 QWidget 添加。
-        # 或者，更简单地，如果 QFormLayout 的该行不需要左侧标签，可以直接添加布局。
-        # 但为了保持 QFormLayout 的结构，我们还是给它一个总的标签。
-        other_layout.addRow("学习选项:", learning_options_layout)
-
-
-        other_group.setLayout(other_layout)
-        basic_layout.addWidget(other_group)
-
-        # 添加提示词模板编辑区域
+        # --- 添加提示词模板编辑区域---
         self.setup_prompt_template_tab(prompt_layout, current_config)
 
-        # --- 按钮 ---
-        button_box = QDialogButtonBox(QDialogButtonBox.StandardButton.Save | QDialogButtonBox.StandardButton.Cancel)
-        button_box.accepted.connect(self.save_and_close)
-        button_box.rejected.connect(self.reject)
 
-        # 删除缓存按钮 (单独添加)
-        del_cache_btn = QPushButton("删除缓存")
-        del_cache_btn.clicked.connect(self.clear_cache_and_notify)
+
+        # --- 保存取消按钮 ---
+        self.button_box = QDialogButtonBox(QDialogButtonBox.StandardButton.Save | QDialogButtonBox.StandardButton.Cancel)
+        self.button_box.accepted.connect(self.save_and_close)
+        self.button_box.rejected.connect(self.reject)
         button_layout = QHBoxLayout() # 水平布局放按钮
-        button_layout.addWidget(del_cache_btn)
-        button_layout.addStretch() # 推到右边
-        button_layout.addWidget(button_box) # 标准按钮盒
-
-        main_layout.addLayout(button_layout) # 添加按钮布局
+        button_layout.addWidget(self.button_box)
+        main_layout.addLayout(button_layout)
 
 
     def add_api_setting(self,basic_layout,current_config):
@@ -369,6 +320,62 @@ class ConfigDialog(QDialog):
 
         prefs_group.setLayout(prefs_layout)
         basic_layout.addWidget(prefs_group)
+
+    def add_othersetting(self,basic_layout,current_config):
+        other_group = QGroupBox("其他")
+        other_layout = QFormLayout()
+
+        self.deck_name = QLineEdit(current_config.get("deck_name", ""))
+        other_layout.addRow("目标牌组名称:", self.deck_name)
+
+        # 学习语言下拉选框
+        self.learning_language_combo = QComboBox()
+        # 常见语言列表，可以根据需要扩展
+        languages = ["英语", "法语", "日语", "西班牙语", "德语", "韩语", "俄语", "意大利语", "葡萄牙语", "阿拉伯语", "印地语"]
+        self.learning_language_combo.addItems(languages)
+        saved_language = current_config.get("learning_language", "英语")
+        if saved_language in languages:
+            self.learning_language_combo.setCurrentText(saved_language)
+        else: # 如果保存的语言不在列表中，默认选择英语
+            self.learning_language_combo.setCurrentText("英语")
+
+        # 是否标出目标词下拉选框
+        self.highlight_target_word_combo = QComboBox()
+        self.highlight_target_word_combo.addItems(["否", "是"]) # 存储时 "是" -> True, "否" -> False
+        saved_highlight = current_config.get("highlight_target_word", False) # 默认为 False
+        self.highlight_target_word_combo.setCurrentText("是" if saved_highlight else "否")
+
+        # 创建一个水平布局来放置这两个下拉框
+        learning_options_layout = QHBoxLayout()
+        learning_options_layout.addWidget(QLabel("学习语言:")) # 添加标签
+        learning_options_layout.addWidget(self.learning_language_combo)
+        learning_options_layout.addSpacing(20) # 添加一些间距
+        learning_options_layout.addWidget(QLabel("标出目标词:")) # 添加标签
+        learning_options_layout.addWidget(self.highlight_target_word_combo)
+        learning_options_layout.addStretch() # 确保控件靠左
+
+        # 将水平布局添加到表单布局中
+        # QFormLayout 通常期望一个标签和一个字段。为了将 QHBoxLayout 作为“字段”部分，
+        # 我们可以直接添加它，或者如果需要一个总标签，可以这样做：
+        # other_layout.addRow("学习选项:", learning_options_layout)
+        # 但如果希望这两个控件在同一行且 QFormLayout 的标签栏为空或用于其他目的，
+        # 我们可以将 QHBoxLayout 添加到一个 QWidget 中，然后将该 QWidget 添加。
+        # 或者，更简单地，如果 QFormLayout 的该行不需要左侧标签，可以直接添加布局。
+        # 但为了保持 QFormLayout 的结构，我们还是给它一个总的标签。
+        other_layout.addRow("学习选项:", learning_options_layout)
+
+
+        other_group.setLayout(other_layout)
+        basic_layout.addWidget(other_group)
+
+        # 删除缓存按钮
+        del_cache_btn = QPushButton("删除缓存")
+        del_cache_btn.clicked.connect(self.clear_cache_and_notify)
+        button_layout = QHBoxLayout() # 水平布局放按钮
+        button_layout.addWidget(del_cache_btn)
+        button_layout.addStretch() # 推到右边
+        basic_layout.addLayout(button_layout) # 添加按钮布局
+
     def setup_prompt_template_tab(self, layout, config):
         """设置提示词模板编辑选项卡"""
         # 提示词模板编辑区域
