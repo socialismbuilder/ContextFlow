@@ -174,35 +174,8 @@ def generate_ai_sentence(config, keyword,prompt = None):
         response = get_api_response(config,formatted_prompt)
         message_content = get_message_content(response, keyword)
 
-        # Parse the nested JSON content
-        try:
-            message_content = re.sub(r'(^```(?:[a-zA-Z0-9]+)?\s*\n|\s*```\s*$)', '', message_content, flags=re.DOTALL)
-            message_content_json = json.loads(message_content)
-            sentence_pairs_raw = message_content_json.get("sentences")
-        except json.JSONDecodeError as e:
-            sentence_pairs_raw = []
-            print(f"错误：[generate_ai_sentence] API消息内容对于关键字'{keyword}'不是有效的JSON格式：{message_content[:500]}")
-            #raise ValueError("API returned non-JSON content") from e
-
-
-        if not isinstance(sentence_pairs_raw, list):
-
-            print(f"错误：[generate_ai_sentence] 在关键字'{keyword}'的API响应中未找到'sentences'键或其不是列表。内容：{message_content_json}")
-            #raise ValueError("API response missing 'sentences' list")
-
-        # Convert to list of lists and validate format
-        sentence_pairs = []
-        for pair in sentence_pairs_raw:
-            if isinstance(pair, list) and len(pair) == 2 and isinstance(pair[0], str) and isinstance(pair[1], str):
-                sentence_pairs.append(pair) # Store as list of lists directly
-            else:
-                #print(f"WARNING: [generate_ai_sentence] Skipping invalid pair format in response for '{keyword}': {pair}")
-                print(f"警告：[generate_ai_sentence] 跳过关键字'{keyword}'的响应中无效的配对格式：{pair}")
-
+        sentence_pairs = parse_message_content_to_sentence_pairs(message_content, keyword)
         if not sentence_pairs:
-            print(f"警告：[generate_ai_sentence] 在解析关键词 '{keyword}' 后未找到有效的句子对。")
-            # 决定是抛出错误还是返回空列表
-            # 如果API有时返回空值，返回空列表可能是可以接受的
             return [] # Return empty list if no valid pairs
 
 
@@ -211,6 +184,40 @@ def generate_ai_sentence(config, keyword,prompt = None):
     except Exception as e: # Catch other unexpected errors during the process
         print(f"错误：[generate_ai_sentence] 关键字 '{keyword}' 出现意外错误：{type(e).__name__} - {e}")
         traceback.print_exc()
+
+def parse_message_content_to_sentence_pairs(message_content: str, keyword: str) -> list:
+    """
+    将API返回的message_content解析为句子对列表[[语言例句, 中文翻译], ...]
+    :param message_content: API返回的原始消息内容
+    :param keyword: 当前处理的关键词（用于错误提示）
+    :return: 有效的句子对列表，空列表表示无有效数据
+    """
+    # 清理可能的代码块标记
+    try:
+        cleaned_content = re.sub(r'(^```(?:[a-zA-Z0-9]+)?\s*\n|\s*```\s*$)', '', message_content, flags=re.DOTALL)
+        content_json = json.loads(cleaned_content)
+        raw_pairs = content_json.get("sentences")
+    except json.JSONDecodeError:
+        print(f"错误：[parse_message_content_to_sentence_pairs] 关键字'{keyword}'的响应非JSON格式：{message_content[:200]}")
+        return []
+    
+    # 验证sentences字段类型
+    if not isinstance(raw_pairs, list):
+        print(f"错误：[parse_message_content_to_sentence_pairs] 关键字'{keyword}'未找到有效sentences列表")
+        return []
+    
+    # 验证每个句子对格式
+    valid_pairs = []
+    for pair in raw_pairs:
+        if isinstance(pair, list) and len(pair) == 2 and all(isinstance(item, str) for item in pair):
+            valid_pairs.append(pair)
+        else:
+            print(f"警告：[parse_message_content_to_sentence_pairs] 关键字'{keyword}'跳过无效配对：{pair}")
+    
+    if not valid_pairs:
+        print(f"警告：[parse_message_content_to_sentence_pairs] 关键字'{keyword}'未找到有效句子对")
+    
+    return valid_pairs
 
 # 新的同步测试函数，替代之前的异步流式版本
 def test_api_sync(
