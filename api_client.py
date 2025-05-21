@@ -142,49 +142,6 @@ def get_message_content(response,keyword):
         #用户不应该看到报错，raise都注释掉
         #raise ValueError(f"API响应格式错误：{e}") from e
 
-
-def generate_ai_sentence(config, keyword,prompt = None):
-    """
-    同步调用AI接口生成包含关键词的例句。
-    直接返回例句对列表（[[英文, 中文], ...]）或在出错时抛出异常。
-    """
-    # Merge default config with provided config if necessary, or just use provided
-
-    vocab_level = config.get("vocab_level", DEFAULT_CONFIG["vocab_level"])
-    learning_goal = config.get("learning_goal", DEFAULT_CONFIG["learning_goal"])
-    difficulty_level = config.get("difficulty_level", DEFAULT_CONFIG["difficulty_level"])
-    sentence_length_desc = config.get("sentence_length_desc", DEFAULT_CONFIG["sentence_length_desc"])
-    learning_language = config.get("learning_language", DEFAULT_CONFIG["learning_language"])
-
-
-    # 没有输入prompt则执行获取prompt函数
-    if prompt == None:
-        prompt = get_prompts(config)
-
-    formatted_prompt = prompt.format(
-        world=keyword,
-        vocab_level=vocab_level,
-        learning_goal=learning_goal,
-        difficulty_level=difficulty_level,
-        sentence_length_desc=sentence_length_desc,
-        language = learning_language
-    )
-
-    try:
-        response = get_api_response(config,formatted_prompt)
-        message_content = get_message_content(response, keyword)
-
-        sentence_pairs = parse_message_content_to_sentence_pairs(message_content, keyword)
-        if not sentence_pairs:
-            return [] # Return empty list if no valid pairs
-
-
-        return sentence_pairs # Return list of lists [[en, cn], ...]
-
-    except Exception as e: # Catch other unexpected errors during the process
-        print(f"错误：[generate_ai_sentence] 关键字 '{keyword}' 出现意外错误：{type(e).__name__} - {e}")
-        traceback.print_exc()
-
 def parse_message_content_to_sentence_pairs(message_content: str, keyword: str) -> list:
     """
     将API返回的message_content解析为句子对列表[[语言例句, 中文翻译], ...]
@@ -218,6 +175,48 @@ def parse_message_content_to_sentence_pairs(message_content: str, keyword: str) 
         print(f"警告：[parse_message_content_to_sentence_pairs] 关键字'{keyword}'未找到有效句子对")
     
     return valid_pairs
+
+
+def generate_ai_sentence(config, keyword,prompt = None):
+    """
+    同步调用AI接口生成包含关键词的例句。
+    直接返回例句对列表（[[英文, 中文], ...]）或在出错时抛出异常。
+    """
+    # Merge default config with provided config if necessary, or just use provided
+
+    vocab_level = config.get("vocab_level", DEFAULT_CONFIG["vocab_level"])
+    learning_goal = config.get("learning_goal", DEFAULT_CONFIG["learning_goal"])
+    difficulty_level = config.get("difficulty_level", DEFAULT_CONFIG["difficulty_level"])
+    sentence_length_desc = config.get("sentence_length_desc", DEFAULT_CONFIG["sentence_length_desc"])
+    learning_language = config.get("learning_language", DEFAULT_CONFIG["learning_language"])
+
+    # 没有输入prompt则执行获取prompt函数
+    if prompt == None:
+        prompt = get_prompts(config)
+
+    formatted_prompt = prompt.format(
+        world=keyword,
+        vocab_level=vocab_level,
+        learning_goal=learning_goal,
+        difficulty_level=difficulty_level,
+        sentence_length_desc=sentence_length_desc,
+        language = learning_language
+    )
+
+    try:
+        response = get_api_response(config,formatted_prompt)
+        message_content = get_message_content(response, keyword)
+        sentence_pairs = parse_message_content_to_sentence_pairs(message_content, keyword)
+        if not sentence_pairs:
+            return [] # Return empty list if no valid pairs
+
+        return sentence_pairs # Return list of lists [[en, cn], ...]
+
+    except Exception as e: # Catch other unexpected errors during the process
+        print(f"错误：[generate_ai_sentence] 关键字 '{keyword}' 出现意外错误：{type(e).__name__} - {e}")
+        traceback.print_exc()
+
+
 
 # 新的同步测试函数，替代之前的异步流式版本
 def test_api_sync(
