@@ -213,20 +213,36 @@ class ConfigDialog(QDialog):
         else: # 如果保存的语言不在列表中，默认选择英语
             self.learning_language_combo.setCurrentText("英语")
 
-        # 是否标出目标词下拉选框
+        # 提示词选择下拉选框 (沿用 highlight_target_word_combo 作为控件名，但功能是选择提示词)
         self.highlight_target_word_combo = QComboBox()
-        self.highlight_target_word_combo.addItems(["否", "是"]) # 存储时 "是" -> True, "否" -> False
-        saved_highlight = current_config.get("highlight_target_word", False) # 默认为 False
-        self.highlight_target_word_combo.setCurrentText("是" if saved_highlight else "否")
+        custom_prompts = current_config.get("custom_prompts", {})
+        prompt_choices = ["默认-不标记目标词", "默认-标记目标词", "空"] + list(custom_prompts.keys())
+        self.highlight_target_word_combo.addItems(prompt_choices)
+        
+        # 直接使用 highlight_target_word 键名加载，默认为 "默认-不标记目标词"
+        saved_prompt_selection = current_config.get("highlight_target_word", "默认-不标记目标词")
+        if saved_prompt_selection in prompt_choices:
+            self.highlight_target_word_combo.setCurrentText(saved_prompt_selection)
+        else:
+            # 如果保存的值不在当前选项中（例如旧的布尔值或"是"/"否"），则回退
+            if isinstance(saved_prompt_selection, bool):
+                 self.highlight_target_word_combo.setCurrentText("默认-标记目标词" if saved_prompt_selection else "默认-不标记目标词")
+            elif saved_prompt_selection == "是":
+                 self.highlight_target_word_combo.setCurrentText("默认-标记目标词")
+            elif saved_prompt_selection == "否":
+                 self.highlight_target_word_combo.setCurrentText("默认-不标记目标词")
+            else:
+                 self.highlight_target_word_combo.setCurrentText("默认-不标记目标词")
+
 
         # 创建一个水平布局来放置这两个下拉框
         learning_options_layout = QHBoxLayout()
-        learning_options_layout.addWidget(QLabel("学习语言:")) # 添加标签
+        learning_options_layout.addWidget(QLabel("学习语言:"))
         learning_options_layout.addWidget(self.learning_language_combo)
-        learning_options_layout.addSpacing(20) # 添加一些间距
-        learning_options_layout.addWidget(QLabel("标出目标词:")) # 添加标签
+        learning_options_layout.addSpacing(20)
+        learning_options_layout.addWidget(QLabel("提示词选择:")) # 标签改为“提示词选择”
         learning_options_layout.addWidget(self.highlight_target_word_combo)
-        learning_options_layout.addStretch() # 确保控件靠左
+        learning_options_layout.addStretch()
 
         # 将水平布局添加到表单布局中
         # QFormLayout 通常期望一个标签和一个字段。为了将 QHBoxLayout 作为“字段”部分，
@@ -460,7 +476,8 @@ class ConfigDialog(QDialog):
             "difficulty_level": config.get("difficulty_level", "中级 (B1): 并列/简单复合句，稍复杂话题，扩大词汇范围"),
             "sentence_length_desc": config.get("sentence_length_desc", "中等长度句 (约25-40词): 通用对话及文章常用长度"),
             "learning_language": config.get("learning_language", "英语"),
-            "highlight_target_word": config.get("highlight_target_word", False),
+            "highlight_target_word": config.get("highlight_target_word", "默认-不标记目标词"),
+            "custom_prompts":config.get("custom_prompts",{})
         }
 
         # 获取测试模式
@@ -493,54 +510,24 @@ class ConfigDialog(QDialog):
         self.test_result_edit.setText("正在生成例句，请稍候...")
         self.test_prompt_button.setEnabled(False)
         QApplication.processEvents() # 确保UI更新
-
+        
         try:
-            # 使用主逻辑任务队列处理生成请求
-            main_logic.task_queue.put((0, keyword))
-            
-            # 初始化等待逻辑
-            start_time = time.time()
-            max_wait = 60  # 最大等待60秒
-            check_interval = 1  # 每秒检查一次缓存
-            
-            # 创建定时器用于检查缓存（需在主线程执行）
-            timer = QTimer()
-            timer.setInterval(check_interval * 1000)
-            
-            def check_cache():
-                elapsed = time.time() - start_time
-                if elapsed >= max_wait:
-                    # 超时处理
-                    timer.stop()
-                    self.test_result_edit.setText("生成失败：超时未获取到结果")
-                    self.test_prompt_button.setEnabled(True)
-                    return
-                
-                # 加锁检查缓存
-                with main_logic.cache_lock:
-                    cache = main_logic.load_cache()
-                    if keyword in cache and cache[keyword]:
-                        # 找到有效缓存
-                        timer.stop()
-                        sentence_pairs = cache[keyword]
-                        
-                        # 格式化所有例句对显示
-                        result_text = f"关键词 '{keyword}' 的例句测试结果：\n\n"
-                        for i, (sentence, translation) in enumerate(sentence_pairs, 1):
-                            result_text += f"例句 {i}:\n{sentence}\n\n翻译:\n{translation}\n\n"
-                        
-                        # 删除整个缓存条目（一个不剩）
-                        del cache[keyword]
-                        main_logic.save_cache(cache)
-                        
-                        self.test_result_edit.setText(result_text)
-                        self.test_prompt_button.setEnabled(True)
-            
-            timer.timeout.connect(check_cache)
-            timer.start()
-            
-            # 初始提示
-            self.test_result_edit.setText("已提交生成请求，正在等待结果...")
+            current_edited_prompt = self.prompt_template_edit.toPlainText()
+            sentence_pairs = api_client.generate_ai_sentence(test_config, keyword,prompt=current_edited_prompt)
+
+            if not sentence_pairs:
+                self.test_result_edit.setText("未能生成例句，请检查API配置和提示词模板")
+                self.test_prompt_button.setEnabled(True)
+                return
+
+            # 格式化结果显示
+            result_text = f"关键词 '{keyword}' 的例句测试结果：\n\n"
+
+            for i, (sentence, translation) in enumerate(sentence_pairs, 1):
+                result_text += f"例句 {i}:\n{sentence}\n\n翻译:\n{translation}\n\n"
+
+            # 显示结果
+            self.test_result_edit.setText(result_text)
 
         except Exception as e:
             self.test_result_edit.setText(f"测试错误: {str(e)}")
@@ -744,8 +731,15 @@ class ConfigDialog(QDialog):
             "difficulty_level": self._get_combo_value(self.difficulty_combo, getattr(self, 'difficulty_custom', None)),
             "sentence_length_desc": self._get_combo_value(self.length_combo, getattr(self, 'length_custom', None)),
             "learning_language": self.learning_language_combo.currentText(),
-            "highlight_target_word": self.highlight_target_word_combo.currentText() == "是"
+            "highlight_target_word": self.highlight_target_word_combo.currentText() # 键名保持 highlight_target_word
         }
+        
+        # 从旧配置中继承 custom_prompts, preset_api_urls 等，因为它们不在UI上直接编辑，但需要保留
+        current_full_config = get_config()
+        for key in ["custom_prompts", "preset_api_urls", "preset_vocab_levels", "preset_learning_goals", "preset_difficulties", "preset_lengths"]:
+            if key in current_full_config:
+                new_config[key] = current_full_config[key]
+
         save_config(new_config) # 调用 config_manager 中的保存函数
         QMessageBox.information(self, "成功", "配置已保存。") # 提示用户
         self.accept() # 关闭对话框

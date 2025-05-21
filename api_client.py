@@ -89,10 +89,10 @@ DEFAULT_CONFIG = {
     "difficulty_level": "中级 (B1): 并列/简单复合句，稍复杂话题，扩大词汇范围",
     "sentence_length_desc": "中等长度句 (约25-40词): 通用对话及文章常用长度",
     "learning_language":"英语",
-    "highlight_target_word":False
+    "highlight_target_word":"默认-不标记目标词"
 }
 
-def generate_ai_sentence(config, keyword):
+def generate_ai_sentence(config, keyword,prompt = None):
     """
     同步调用AI接口生成包含关键词的例句。
     直接返回例句对列表（[[英文, 中文], ...]）或在出错时抛出异常。
@@ -113,14 +113,20 @@ def generate_ai_sentence(config, keyword):
     prompt_format_highlight = config.get("prompt_format_highlight", DEFAULT_FORMAT_HIGHLIGHT)
 
     # 根据是否高亮目标词选择不同的格式示例
-    highlight_target_word = config.get("highlight_target_word", DEFAULT_CONFIG["highlight_target_word"])
-    if highlight_target_word:
-        prompt = prompt_template + prompt_format_highlight
-    else:
-        prompt = prompt_template + prompt_format_normal
-
-    if not api_url or not api_key or not model_name:
-        raise ValueError("API URL, Key, or Model Name missing in config.")
+    if prompt == None:
+        custom_prompts = config.get("custom_prompts", {})
+        highlight_target_word = config.get("highlight_target_word", DEFAULT_CONFIG["highlight_target_word"])
+        if highlight_target_word == "默认-不标记目标词":
+            print("默认不标记")
+            prompt = DEFAULT_PROMPT_TEMPLATE + DEFAULT_FORMAT_NORMAL
+        elif highlight_target_word == "默认-标记目标词":
+            print("默认标记")
+            prompt = DEFAULT_PROMPT_TEMPLATE + DEFAULT_FORMAT_HIGHLIGHT
+        else:
+            custom_prompts = config.get("custom_prompts", {})
+            prompt = custom_prompts.get(highlight_target_word,DEFAULT_PROMPT_TEMPLATE + DEFAULT_FORMAT_NORMAL)
+        if not api_url or not api_key or not model_name:
+            raise ValueError("API URL, Key, or Model Name missing in config.")
 
     formatted_prompt = prompt.format(
         world=keyword,
