@@ -105,41 +105,10 @@ def get_prompts(config):
         prompt = custom_prompts.get(highlight_target_word,DEFAULT_PROMPT_TEMPLATE + DEFAULT_FORMAT_NORMAL)
     return prompt
 
-def generate_ai_sentence(config, keyword,prompt = None):
-    """
-    同步调用AI接口生成包含关键词的例句。
-    直接返回例句对列表（[[英文, 中文], ...]）或在出错时抛出异常。
-    """
-    # Merge default config with provided config if necessary, or just use provided
+def get_api_response(config,formatted_prompt):
     api_url = config.get("api_url")
     api_key = config.get("api_key")
     model_name = config.get("model_name")
-    vocab_level = config.get("vocab_level", DEFAULT_CONFIG["vocab_level"])
-    learning_goal = config.get("learning_goal", DEFAULT_CONFIG["learning_goal"])
-    difficulty_level = config.get("difficulty_level", DEFAULT_CONFIG["difficulty_level"])
-    sentence_length_desc = config.get("sentence_length_desc", DEFAULT_CONFIG["sentence_length_desc"])
-    learning_language = config.get("learning_language", DEFAULT_CONFIG["learning_language"])
-
-    # 从配置中读取提示词模板，如果没有则使用默认值
-    prompt_template = config.get("prompt_template", DEFAULT_PROMPT_TEMPLATE)
-    prompt_format_normal = config.get("prompt_format_normal", DEFAULT_FORMAT_NORMAL)
-    prompt_format_highlight = config.get("prompt_format_highlight", DEFAULT_FORMAT_HIGHLIGHT)
-
-    # 根据是否高亮目标词选择不同的格式示例
-    if prompt == None:
-        prompt = get_prompts(config)
-
-    formatted_prompt = prompt.format(
-        world=keyword,
-        vocab_level=vocab_level,
-        learning_goal=learning_goal,
-        difficulty_level=difficulty_level,
-        sentence_length_desc=sentence_length_desc,
-        language = learning_language
-    )
-    
-    if not api_url or not api_key or not model_name:
-        raise ValueError("API URL, Key, or Model Name missing in config.")
     try:
         response = requests.post(
             api_url,
@@ -153,15 +122,57 @@ def generate_ai_sentence(config, keyword,prompt = None):
         )
 
         response.raise_for_status() # Raise HTTPError for bad responses (4xx or 5xx)
+        return response
+    #出现异常print出来
+    except requests.exceptions.RequestException as e:
+        print(f"错误：[get_api_response] 网络错误：{e}")
+        return None
+    except Exception as e: # Catch other unexpected errors during the process
+        print(f"错误：[get_api_response] 意外错误：{type(e).__name__} - {e}")
+        return None
 
-        # Parse JSON response
-        try:
-            response_json = response.json()
-            message_content = response_json["choices"][0]["message"]["content"]
-        except (KeyError, IndexError, json.JSONDecodeError) as e:
-            print(f"错误：[generate_ai_sentence] 无法从API响应中提取/解析内容，关键词：'{keyword}'。错误：{e}。响应文本：{response.text[:500]}")
-            #用户不应该看到报错，raise都注释掉
-            #raise ValueError(f"API响应格式错误：{e}") from e
+def get_message_content(response,keyword):
+    try:
+        response_json = response.json()
+        message_content = response_json["choices"][0]["message"]["content"]
+        return message_content
+    except (KeyError, IndexError, json.JSONDecodeError) as e:
+        print(f"错误：[get_message_content] 无法从API响应中提取/解析内容，关键词：'{keyword}'。错误：{e}。响应文本：{response.text[:500]}")
+        return None
+        #用户不应该看到报错，raise都注释掉
+        #raise ValueError(f"API响应格式错误：{e}") from e
+
+
+def generate_ai_sentence(config, keyword,prompt = None):
+    """
+    同步调用AI接口生成包含关键词的例句。
+    直接返回例句对列表（[[英文, 中文], ...]）或在出错时抛出异常。
+    """
+    # Merge default config with provided config if necessary, or just use provided
+
+    vocab_level = config.get("vocab_level", DEFAULT_CONFIG["vocab_level"])
+    learning_goal = config.get("learning_goal", DEFAULT_CONFIG["learning_goal"])
+    difficulty_level = config.get("difficulty_level", DEFAULT_CONFIG["difficulty_level"])
+    sentence_length_desc = config.get("sentence_length_desc", DEFAULT_CONFIG["sentence_length_desc"])
+    learning_language = config.get("learning_language", DEFAULT_CONFIG["learning_language"])
+
+
+    # 没有输入prompt则执行获取prompt函数
+    if prompt == None:
+        prompt = get_prompts(config)
+
+    formatted_prompt = prompt.format(
+        world=keyword,
+        vocab_level=vocab_level,
+        learning_goal=learning_goal,
+        difficulty_level=difficulty_level,
+        sentence_length_desc=sentence_length_desc,
+        language = learning_language
+    )
+
+    try:
+        response = get_api_response(config,formatted_prompt)
+        message_content = get_message_content(response, keyword)
 
         # Parse the nested JSON content
         try:
@@ -197,14 +208,9 @@ def generate_ai_sentence(config, keyword,prompt = None):
 
         return sentence_pairs # Return list of lists [[en, cn], ...]
 
-    except requests.exceptions.RequestException as e:
-        print(f"错误：[generate_ai_sentence] 关键词 '{keyword}' 的网络错误：{e}")
-        #raise ConnectionError(f"Network error: {e}") from e
     except Exception as e: # Catch other unexpected errors during the process
-        #print(f"ERROR: [generate_ai_sentence] Unexpected error for keyword '{keyword}': {type(e).__name__} - {e}")
         print(f"错误：[generate_ai_sentence] 关键字 '{keyword}' 出现意外错误：{type(e).__name__} - {e}")
         traceback.print_exc()
-        #raise RuntimeError(f"Unexpected error: {e}") from e
 
 # 新的同步测试函数，替代之前的异步流式版本
 def test_api_sync(
