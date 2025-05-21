@@ -7,7 +7,7 @@ import aqt
 from aqt.qt import (
     QDialog, QVBoxLayout, QFormLayout, QLabel, QLineEdit, QPushButton, QComboBox,
     QGroupBox, QHBoxLayout, QWidget, QDialogButtonBox, QMessageBox, QApplication,
-    QTabWidget, QTextEdit, QSplitter, Qt
+    QTabWidget, QTextEdit, QSplitter, Qt,QGridLayout
 )
 from .config_manager import get_config, save_config # 使用相对导入
 from .cache_manager import clear_cache
@@ -260,7 +260,7 @@ class ConfigDialog(QDialog):
     def setup_prompt_template_tab(self, layout, config):
         """设置提示词模板编辑选项卡"""
         # 提示词模板编辑区域
-        prompt_group = QGroupBox("提示词模板编辑")
+        prompt_group = QGroupBox("提示词编辑")
         prompt_layout = QVBoxLayout()
 
         # 提示词模板说明
@@ -268,54 +268,38 @@ class ConfigDialog(QDialog):
         help_label.setWordWrap(True)
         prompt_layout.addWidget(help_label)
 
-        # 占位符说明
-        placeholders_label = QLabel(
-            "{world}: 关键词\n"
-            "{language}: 学习语言\n"
-            "{vocab_level}: 词汇量等级\n"
-            "{learning_goal}: 学习目标\n"
-            "{difficulty_level}: 句子难度\n"
-            "{sentence_length_desc}: 句子长度"
-        )
-        prompt_layout.addWidget(placeholders_label)
+
+
+        grid_layout  = QGridLayout()
+        grid_layout.addWidget(QLabel("{world}:关键词"),0,0)
+        grid_layout.addWidget(QLabel("{language}:学习语言"),0,1)
+        grid_layout.addWidget(QLabel("{vocab_level}:词汇量等级"),0,2)
+
+        grid_layout.addWidget(QLabel("{learning_goal}:学习目标"),1,0)
+        grid_layout.addWidget(QLabel("{difficulty_level}:句子难度"),1,1)
+        grid_layout.addWidget(QLabel("{sentence_length_desc}:句子长度"),1,2)
+
+        prompt_layout.addLayout(grid_layout)
+
+
+        #prompt_layout.addWidget(placeholders_label)
 
         # 主提示词模板编辑区
-        prompt_label = QLabel("主提示词模板:")
-        prompt_layout.addWidget(prompt_label)
+        edit_prompt_layout = QHBoxLayout()
+        edit_prompt = QLabel("提示词编辑:")
+        edit_prompt_layout.addWidget(edit_prompt)
+
+        self.prompt_source_combo = QComboBox()
+        self.prompt_source_combo.addItems(["默认-不标记目标词", "默认-标记目标词", "空"])
+        edit_prompt_layout.addWidget(self.prompt_source_combo)
+        prompt_layout.addLayout(edit_prompt_layout)
 
         self.prompt_template_edit = QTextEdit()
         self.prompt_template_edit.setMinimumHeight(200)
-        self.prompt_template_edit.setText(config.get("prompt_template", api_client.DEFAULT_PROMPT_TEMPLATE))
+        current_prompt = api_client.DEFAULT_PROMPT_TEMPLATE+api_client.DEFAULT_FORMAT_NORMAL
+        self.prompt_template_edit.setText(current_prompt)
         prompt_layout.addWidget(self.prompt_template_edit)
 
-        # 格式示例编辑区
-        format_layout = QHBoxLayout()
-
-        # 普通格式示例
-        normal_format_layout = QVBoxLayout()
-        normal_format_label = QLabel("普通格式示例:")
-        normal_format_layout.addWidget(normal_format_label)
-
-        self.normal_format_edit = QTextEdit()
-        self.normal_format_edit.setMinimumHeight(150)
-        self.normal_format_edit.setText(config.get("prompt_format_normal", api_client.DEFAULT_FORMAT_NORMAL))
-        normal_format_layout.addWidget(self.normal_format_edit)
-
-        # 高亮格式示例
-        highlight_format_layout = QVBoxLayout()
-        highlight_format_label = QLabel("高亮格式示例:")
-        highlight_format_layout.addWidget(highlight_format_label)
-
-        self.highlight_format_edit = QTextEdit()
-        self.highlight_format_edit.setMinimumHeight(150)
-        self.highlight_format_edit.setText(config.get("prompt_format_highlight", api_client.DEFAULT_FORMAT_HIGHLIGHT))
-        highlight_format_layout.addWidget(self.highlight_format_edit)
-
-        # 添加两个格式编辑区到水平布局
-        format_layout.addLayout(normal_format_layout)
-        format_layout.addLayout(highlight_format_layout)
-
-        prompt_layout.addLayout(format_layout)
 
         # 测试区域
         test_group = QGroupBox("提示词测试")
@@ -479,7 +463,8 @@ class ConfigDialog(QDialog):
             PRESET_API_URLS =  get_config().get("preset_api_urls")
             self.api_url.setText(PRESET_API_URLS.get(provider, ""))
             self.api_url.setReadOnly(True)
-
+     def _prompt_change(self):
+         pass
     def _test_api_connection(self):
         """处理测试API连接按钮点击事件（现在是同步的）"""
         api_url = self.api_url.text()
