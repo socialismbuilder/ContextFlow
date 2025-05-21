@@ -26,7 +26,7 @@ PRESET_API_URLS = {
     "自定义": "" # 自定义选项
 }
 
-# 预设词汇量等级
+# 预设词汇量等级列表
 preset_vocab_levels = [
     # 按教育阶段（国内系统参考）
     "小学核心词汇 (约1500词)",
@@ -117,7 +117,7 @@ preset_difficulties = [
     "自定义"
 ]
 
-# 句子长度选择
+# 句子长度选择列表
 
 preset_lengths = [
     # 按单词数量细分，并关联典型语境
@@ -167,84 +167,8 @@ class ConfigDialog(QDialog):
         self.add_api_setting(basic_layout,current_config)
 
         # --- 句子生成偏好设置组 ---
-        prefs_group = QGroupBox("句子生成偏好")
-        prefs_layout = QFormLayout()
-
-        # 词汇量等级选择
-        self.vocab_level_combo = QComboBox()
-
-
-        self.vocab_level_combo.addItems(preset_vocab_levels)
-        current_vocab = current_config.get("vocab_level", "大学英语四级 CET-4 (4000词)")
-        self.vocab_level_custom = None # 初始化为 None
-        if current_vocab not in preset_vocab_levels[:-1]:
-            self.vocab_level_combo.setCurrentText("自定义")
-            self.vocab_level_custom = QLineEdit(current_vocab)
-        else:
-            self.vocab_level_combo.setCurrentText(current_vocab)
-        prefs_layout.addRow("词汇量等级:", self.vocab_level_combo)
-        if self.vocab_level_custom:
-            prefs_layout.addRow("", self.vocab_level_custom) # 自定义输入框放在下一行
-        self.vocab_level_combo.currentIndexChanged.connect(self.on_vocab_level_changed)
-        self._toggle_custom_widget(self.vocab_level_combo, self.vocab_level_custom, prefs_layout) # 初始化可见性
-
-        # 学习目标选择
-        self.learning_goal_combo = QComboBox()
-
-
-        self.learning_goal_combo.addItems(preset_learning_goals)
-        current_goal = current_config.get("learning_goal", "提升日常浏览英文网页与资料的流畅度")
-        self.learning_goal_custom = None
-        if current_goal not in preset_learning_goals[:-1]:
-            self.learning_goal_combo.setCurrentText("自定义")
-            self.learning_goal_custom = QLineEdit(current_goal)
-        else:
-            self.learning_goal_combo.setCurrentText(current_goal)
-        prefs_layout.addRow("学习目标:", self.learning_goal_combo)
-        if self.learning_goal_custom:
-            prefs_layout.addRow("", self.learning_goal_custom)
-        self.learning_goal_combo.currentIndexChanged.connect(self.on_learning_goal_changed)
-        self._toggle_custom_widget(self.learning_goal_combo, self.learning_goal_custom, prefs_layout)
-
-        # 句子难度选择
-        self.difficulty_combo = QComboBox()
-
-
-
-        self.difficulty_combo.addItems(preset_difficulties)
-        current_diff = current_config.get("difficulty_level", "中级 (B1): 并列/简单复合句，稍复杂话题，扩大词汇范围") # 修正默认值以匹配列表
-        self.difficulty_custom = None
-        if current_diff not in preset_difficulties[:-1]:
-            self.difficulty_combo.setCurrentText("自定义")
-            self.difficulty_custom = QLineEdit(current_diff)
-        else:
-            self.difficulty_combo.setCurrentText(current_diff)
-        prefs_layout.addRow("句子难度:", self.difficulty_combo)
-        if self.difficulty_custom:
-            prefs_layout.addRow("", self.difficulty_custom)
-        self.difficulty_combo.currentIndexChanged.connect(self.on_difficulty_changed)
-        self._toggle_custom_widget(self.difficulty_combo, self.difficulty_custom, prefs_layout)
-
-
-
-        self.length_combo = QComboBox()
-        self.length_combo.addItems(preset_lengths)
-        current_length = current_config.get("sentence_length_desc", "中等长度句 (约25-40词): 通用对话及文章常用长度") # 修正默认值
-        self.length_custom = None
-        if current_length not in preset_lengths[:-1]:
-            self.length_combo.setCurrentText("自定义")
-            self.length_custom = QLineEdit(current_length)
-        else:
-            self.length_combo.setCurrentText(current_length)
-        prefs_layout.addRow("句子长度:", self.length_combo)
-        if self.length_custom:
-            prefs_layout.addRow("", self.length_custom)
-        self.length_combo.currentIndexChanged.connect(self.on_length_changed)
-        self._toggle_custom_widget(self.length_combo, self.length_custom, prefs_layout)
-
-        prefs_group.setLayout(prefs_layout)
-        basic_layout.addWidget(prefs_group)
-
+        self.add_Preferences_setting(basic_layout,current_config)
+        
         # --- 其他设置 ---
         other_group = QGroupBox("其他")
         other_layout = QFormLayout()
@@ -367,7 +291,84 @@ class ConfigDialog(QDialog):
         api_group.setLayout(api_layout)
         basic_layout.addWidget(api_group)
 
+    def add_Preferences_setting(self,basic_layout,current_config):
+        prefs_group = QGroupBox("句子生成偏好")
+        prefs_layout = QFormLayout()
 
+        # 词汇量等级选择
+        self.vocab_level_combo = QComboBox()
+
+
+        self.vocab_level_combo.addItems(preset_vocab_levels)
+        current_vocab = current_config.get("vocab_level", "大学英语四级 CET-4 (4000词)")
+        self.vocab_level_custom = None # 初始化为 None
+        if current_vocab not in preset_vocab_levels[:-1]:
+            self.vocab_level_combo.setCurrentText("自定义")
+            self.vocab_level_custom = QLineEdit(current_vocab)
+        else:
+            self.vocab_level_combo.setCurrentText(current_vocab)
+        prefs_layout.addRow("词汇量等级:", self.vocab_level_combo)
+        if self.vocab_level_custom:
+            prefs_layout.addRow("", self.vocab_level_custom) # 自定义输入框放在下一行
+        self.vocab_level_combo.currentIndexChanged.connect(self.on_vocab_level_changed)
+        self._toggle_custom_widget(self.vocab_level_combo, self.vocab_level_custom, prefs_layout) # 初始化可见性
+
+        # 学习目标选择
+        self.learning_goal_combo = QComboBox()
+
+
+        self.learning_goal_combo.addItems(preset_learning_goals)
+        current_goal = current_config.get("learning_goal", "提升日常浏览英文网页与资料的流畅度")
+        self.learning_goal_custom = None
+        if current_goal not in preset_learning_goals[:-1]:
+            self.learning_goal_combo.setCurrentText("自定义")
+            self.learning_goal_custom = QLineEdit(current_goal)
+        else:
+            self.learning_goal_combo.setCurrentText(current_goal)
+        prefs_layout.addRow("学习目标:", self.learning_goal_combo)
+        if self.learning_goal_custom:
+            prefs_layout.addRow("", self.learning_goal_custom)
+        self.learning_goal_combo.currentIndexChanged.connect(self.on_learning_goal_changed)
+        self._toggle_custom_widget(self.learning_goal_combo, self.learning_goal_custom, prefs_layout)
+
+        # 句子难度选择
+        self.difficulty_combo = QComboBox()
+
+
+
+        self.difficulty_combo.addItems(preset_difficulties)
+        current_diff = current_config.get("difficulty_level", "中级 (B1): 并列/简单复合句，稍复杂话题，扩大词汇范围") # 修正默认值以匹配列表
+        self.difficulty_custom = None
+        if current_diff not in preset_difficulties[:-1]:
+            self.difficulty_combo.setCurrentText("自定义")
+            self.difficulty_custom = QLineEdit(current_diff)
+        else:
+            self.difficulty_combo.setCurrentText(current_diff)
+        prefs_layout.addRow("句子难度:", self.difficulty_combo)
+        if self.difficulty_custom:
+            prefs_layout.addRow("", self.difficulty_custom)
+        self.difficulty_combo.currentIndexChanged.connect(self.on_difficulty_changed)
+        self._toggle_custom_widget(self.difficulty_combo, self.difficulty_custom, prefs_layout)
+
+
+
+        self.length_combo = QComboBox()
+        self.length_combo.addItems(preset_lengths)
+        current_length = current_config.get("sentence_length_desc", "中等长度句 (约25-40词): 通用对话及文章常用长度") # 修正默认值
+        self.length_custom = None
+        if current_length not in preset_lengths[:-1]:
+            self.length_combo.setCurrentText("自定义")
+            self.length_custom = QLineEdit(current_length)
+        else:
+            self.length_combo.setCurrentText(current_length)
+        prefs_layout.addRow("句子长度:", self.length_combo)
+        if self.length_custom:
+            prefs_layout.addRow("", self.length_custom)
+        self.length_combo.currentIndexChanged.connect(self.on_length_changed)
+        self._toggle_custom_widget(self.length_combo, self.length_custom, prefs_layout)
+
+        prefs_group.setLayout(prefs_layout)
+        basic_layout.addWidget(prefs_group)
     def setup_prompt_template_tab(self, layout, config):
         """设置提示词模板编辑选项卡"""
         # 提示词模板编辑区域
