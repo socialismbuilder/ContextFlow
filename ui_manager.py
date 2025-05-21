@@ -268,8 +268,6 @@ class ConfigDialog(QDialog):
         help_label.setWordWrap(True)
         prompt_layout.addWidget(help_label)
 
-
-
         grid_layout  = QGridLayout()
         grid_layout.addWidget(QLabel("{world}:关键词"),0,0)
         grid_layout.addWidget(QLabel("{language}:学习语言"),0,1)
@@ -281,82 +279,158 @@ class ConfigDialog(QDialog):
 
         prompt_layout.addLayout(grid_layout)
 
-
-        #prompt_layout.addWidget(placeholders_label)
-
         # 主提示词模板编辑区
         edit_prompt_layout = QHBoxLayout()
         edit_prompt = QLabel("提示词编辑:")
         edit_prompt_layout.addWidget(edit_prompt)
 
+        # 提示词来源选择框（含存储的提示词）
         self.prompt_source_combo = QComboBox()
-        self.prompt_source_combo.addItems(["默认-不标记目标词", "默认-标记目标词", "空"])
+        current_config = get_config()
+        custom_prompts = current_config.get("custom_prompts", {})
+        self.prompt_source_combo.addItems(["默认-不标记目标词", "默认-标记目标词", "空"] + list(custom_prompts.keys()))
         edit_prompt_layout.addWidget(self.prompt_source_combo)
+
+        # 删除存储提示词按钮
+        self.delete_prompt_btn = QPushButton("删除")
+        self.delete_prompt_btn.clicked.connect(self.delete_selected_prompt)
+        edit_prompt_layout.addWidget(self.delete_prompt_btn)
         prompt_layout.addLayout(edit_prompt_layout)
 
         self.prompt_template_edit = QTextEdit()
         self.prompt_template_edit.setMinimumHeight(200)
-        current_prompt = api_client.DEFAULT_PROMPT_TEMPLATE+api_client.DEFAULT_FORMAT_NORMAL
-        self.prompt_template_edit.setText(current_prompt)
         prompt_layout.addWidget(self.prompt_template_edit)
 
+        # 存储名输入框和保存按钮
+        save_layout = QHBoxLayout()
+        save_layout.addWidget(QLabel("存储名:"))
+        self.prompt_name_edit = QLineEdit()
+        save_layout.addWidget(self.prompt_name_edit)
+        self.save_prompt_btn = QPushButton("保存")
+        self.save_prompt_btn.clicked.connect(self.save_custom_prompt)
+        save_layout.addWidget(self.save_prompt_btn)
+        prompt_layout.addLayout(save_layout)
 
-        # 测试区域
+        # 初始化提示词内容
+        self.prompt_source_combo.currentTextChanged.connect(self.load_selected_prompt)
+        self.load_selected_prompt(self.prompt_source_combo.currentText())
+
+        # 测试区域（保持原有逻辑）
         test_group = QGroupBox("提示词测试")
         test_layout = QVBoxLayout()
-
-        # 测试输入区域
         test_input_layout = QHBoxLayout()
-
-        # 关键词输入
         keyword_layout = QVBoxLayout()
         keyword_label = QLabel("测试关键词:")
         keyword_layout.addWidget(keyword_label)
-
         self.test_keyword_edit = QLineEdit()
         self.test_keyword_edit.setText("example")
         keyword_layout.addWidget(self.test_keyword_edit)
-
-        # 测试模式选择
         test_mode_layout = QHBoxLayout()
         test_mode_label = QLabel("测试模式:")
         test_mode_layout.addWidget(test_mode_label)
-
         self.test_mode_combo = QComboBox()
         self.test_mode_combo.addItems(["生成例句", "查看提示词"])
         test_mode_layout.addWidget(self.test_mode_combo)
-
         keyword_layout.addLayout(test_mode_layout)
-
-        # 测试按钮
         self.test_prompt_button = QPushButton("测试")
         self.test_prompt_button.clicked.connect(self.test_prompt_template)
         keyword_layout.addWidget(self.test_prompt_button)
-
-        # 添加关键词输入区域到测试输入布局
         test_input_layout.addLayout(keyword_layout)
-
-        # 测试结果显示区域
         test_result_label = QLabel("测试结果:")
         test_layout.addWidget(test_result_label)
-
         self.test_result_edit = QTextEdit()
         self.test_result_edit.setReadOnly(True)
         self.test_result_edit.setMinimumHeight(150)
         test_layout.addWidget(self.test_result_edit)
-
-        # 添加测试输入布局到测试布局
         test_layout.addLayout(test_input_layout)
-
-        # 设置测试组布局
         test_group.setLayout(test_layout)
-
-        # 设置提示词模板组布局
         prompt_group.setLayout(prompt_layout)
-
-        # 添加到主布局
         layout.addWidget(prompt_group)
         layout.addWidget(test_group)
+
+    def load_selected_prompt(self, source):
+        """根据选择的提示词来源加载内容到编辑框，并设置存储名输入框"""
+        config = get_config()
+        custom_prompts = config.get("custom_prompts", {})
+        
+        if source == "默认-不标记目标词":
+            content = api_client.DEFAULT_PROMPT_TEMPLATE + api_client.DEFAULT_FORMAT_NORMAL
+            self.prompt_name_edit.setText("自定义提示词")
+        elif source == "默认-标记目标词":
+            content = api_client.DEFAULT_PROMPT_TEMPLATE + api_client.DEFAULT_FORMAT_HIGHLIGHT
+            self.prompt_name_edit.setText("自定义提示词")
+        elif source == "空":
+            content = ""
+            self.prompt_name_edit.setText("空")
+        else:  # 存储的提示词
+            content = custom_prompts.get(source, "")
+            self.prompt_name_edit.setText(source)
+        
+        self.prompt_template_edit.setPlainText(content)
+
+    def delete_selected_prompt(self):
+        """删除选中的存储提示词"""
+        selected = self.prompt_source_combo.currentText()
+        
+        # 检查是否为不可删除项
+        if selected in ["默认-不标记目标词", "默认-标记目标词", "空"]:
+            QMessageBox.warning(self, "错误", f"不能删除 {selected} 提示词")
+            return
+        
+        # 确认删除
+        reply = QMessageBox.question(
+            self, "确认删除", 
+            f"确定要删除提示词 '{selected}' 吗？",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+        )
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+        
+        # 执行删除
+        config = get_config()
+        custom_prompts = config.get("custom_prompts", {})
+        if selected in custom_prompts:
+            del custom_prompts[selected]
+            config["custom_prompts"] = custom_prompts
+            save_config(config)
+            
+            # 更新选择框
+            self.prompt_source_combo.removeItem(self.prompt_source_combo.findText(selected))
+            self.prompt_source_combo.setCurrentText("默认-不标记目标词")
+            self.load_selected_prompt("默认-不标记目标词")
+            QMessageBox.information(self, "成功", "提示词删除完成")
+        else:
+            QMessageBox.warning(self, "错误", "未找到该存储提示词")
+
+    def save_custom_prompt(self):
+        """保存自定义提示词"""
+        prompt_name = self.prompt_name_edit.text().strip()
+        prompt_content = self.prompt_template_edit.toPlainText()
+        
+        # 校验名称
+        if not prompt_name:
+            QMessageBox.warning(self, "错误", "存储名不能为空")
+            return
+            
+        # 处理默认名称冲突
+        if prompt_name in ["默认-不标记目标词", "默认-标记目标词"]:
+            prompt_name = "自定义提示词"
+            self.prompt_name_edit.setText(prompt_name)
+        
+        # 保存到配置
+        config = get_config()
+        custom_prompts = config.get("custom_prompts", {})
+        custom_prompts[prompt_name] = prompt_content
+        config["custom_prompts"] = custom_prompts
+        save_config(config)
+        
+        # 更新选择框
+        current_items = ["默认-不标记目标词", "默认-标记目标词", "空"] + list(custom_prompts.keys())
+        self.prompt_source_combo.clear()
+        self.prompt_source_combo.addItems(current_items)
+        self.prompt_source_combo.setCurrentText(prompt_name)
+        self.load_selected_prompt(prompt_name)
+        QMessageBox.information(self, "成功", "提示词保存完成")
 
     def test_prompt_template(self):
         """测试提示词模板"""
@@ -463,8 +537,9 @@ class ConfigDialog(QDialog):
             PRESET_API_URLS =  get_config().get("preset_api_urls")
             self.api_url.setText(PRESET_API_URLS.get(provider, ""))
             self.api_url.setReadOnly(True)
-     def _prompt_change(self):
-         pass
+
+    def _prompt_change(self):
+        pass
     def _test_api_connection(self):
         """处理测试API连接按钮点击事件（现在是同步的）"""
         api_url = self.api_url.text()
