@@ -13,125 +13,6 @@ from .config_manager import get_config, save_config # 使用相对导入
 from .cache_manager import clear_cache
 from . import api_client # 导入 api_client 以便调用测试函数
 
-# 主流厂商 API URL 预设
-PRESET_API_URLS = {
-    "火山/豆包/字节（推荐）": "https://ark.cn-beijing.volces.com/api/v3/chat/completions",
-    "deepseek": "https://api.deepseek.com/v1/chat/completions",
-    "OpenRouter": "https://openrouter.ai/api/v1/chat/completions",
-    "硅基流动": "https://api.siliconflow.cn/v1/chat/completions",
-    "Moonshot AI (Kimi)": "https://api.moonshot.cn/v1/chat/completions",
-    "阿里云百练": "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions",
-    "AiHubmix":"https://aihubmix.com/v1/chat/completions",
-    "Ollama (localhost)": "http://localhost:11434/api/chat", # 假设Ollama在本地运行
-    "自定义": "" # 自定义选项
-}
-
-# 预设词汇量等级列表
-preset_vocab_levels = [
-    # 按教育阶段（国内系统参考）
-    "小学核心词汇 (约1500词)",
-    "初中核心词汇 (约3000词)",
-    "高中核心词汇 (约4500词)",
-    # 按大学英语等级
-    "大学英语四级 CET-4 (4000词)",
-    "大学英语六级 CET-6 (6000词)",
-    # 按欧洲共同语言参考标准 (CEFR)
-    "CEFR A2 (基础，约1500词)",
-    "CEFR B1 (初级进阶，约3000词)",
-    "CEFR B2 (中级，约5000词)",
-    "CEFR C1 (高级，约7500词)",
-    "CEFR C2 (精通，约10000词)",
-    # 按留学/专业考试
-    "TOEFL iBT (8000词)",
-    "IELTS Academic (9000词)",
-    "GRE General Test (10000词)",
-    # BEC (Business English Certificate) 暂时不加，如需可再添加
-    # 按学术/专业领域
-    "学术英语进阶 (12000词)", # 适合研究生、博士或高阶研究者
-    "商务英语常用词 (约6000词)", # 贴近商务场景
-    # 母语者及高阶词汇
-    "母语者水平 / 高阶词库 (20000+词)",
-    # 自定义选项保留
-    "自定义"]
-
-# 预设学习目标选项列表
-preset_learning_goals = [
-    # 基础及日常目标
-    "进行基础的日常英语交流 (问候、购物、指路等)",
-    "流利进行日常及社交英语对话",
-    "提升日常浏览英文网页与资料的流畅度", # 保留原选项
-    # 学术相关目标
-    "学术论文阅读与理解", # 保留原选项，可以进一步细化
-    "撰写学术论文摘要、报告或科研邮件",
-    "理解英文讲座、学术会议或课堂内容",
-    # 商务相关目标
-    "商务英语沟通 (会议、谈判、电话等)", # 保留原选项，侧重口语听力
-    "撰写专业的商务邮件、报告或提案", # 侧重写作
-    "理解商务文件、合同或行业报告", # 侧重阅读理解
-    # 考试准备目标
-    "备考中考", # 注意这里可能少了个逗号，如果前面是列表项的话
-    "备考高考",
-    "备考雅思 (IELTS)",
-    "备考托福 (TOEFL)",
-    "备考GRE General Test",
-    "备考大学英语四级 (CET-4)",
-    "备考大学英语六级 (CET-6)",
-    "备考BEC (商务英语证书)",
-    "备考其他标准化英语考试 (如专四/专八)", # 增加一个泛指
-    # 特定场景或能力目标
-    "提高出国旅行时的英语沟通能力",
-    "自信应对英文工作面试",
-    "用英语介绍个人、项目或进行小型演讲 (Presentation)",
-    "提高英文电影、电视剧、播客的理解能力 (无字幕或少字幕)", # 侧重听力理解与文化
-    "用英语进行在线交流和写作 (社交媒体、论坛等)",
-    # 全面或进阶目标
-    "全面提升听说读写各项英语能力",
-    "达到接近母语者的英语水平", #  ambitious goal
-    "利用英语进行深入研究或专业探索", # High-level, professional/academic use
-    # 自定义选项保留
-    "自定义"
-]
-
-# 预设句子难度选项列表
-preset_difficulties = [
-    # 按欧洲共同语言参考标准 (CEFR) 分级细化
-    "入门级 (A1): 极简单句，高频词汇，用于基本沟通",
-    "初级 (A2): 简单复合句，日常话题，基础语法结构",
-    "中级 (B1): 并列/简单复合句，稍复杂话题，扩大词汇范围",
-    "中高级 (B2): 复杂句，抽象主题，多样化句式结构",
-    "高级 (C1): 多主从复合句，深入探讨主题，使用高级词汇和表达",
-    "精通级 (C2): 高度复杂及抽象句式，细微含义，流畅自如",
-    # 按句子结构/语法特点划分
-    "简单句结构: 仅包含主谓宾等基本成分，无从句或复杂短语",
-    "基础复合句: 包含简单的并列句 (and, but, or) 和基础状语从句",
-    "复杂句结构: 包含各类主语/宾语/定语/状语从句，非谓语动词，插入语等",
-    "高级句式: 包含倒装、虚拟语气、强调结构、平行结构等复杂或正式句型",
-    # 按语体风格/内容特点划分
-    "日常口语化: 模拟真实生活对话，包含缩略语、习语等非正式元素",
-    "标准通用: 规范的书面及正式口语，适用于新闻报道、通用文章等",
-    "学术语体: 用于学术论文、教材等，结构严谨，词汇精确，逻辑清晰",
-    "专业/技术领域: 包含特定行业或学科的术语及表达方式，句子结构可能较复杂",
-    # 参照母语者水平
-    "母语者复杂句: 涵盖母语者在复杂语境下可能使用的所有高级句式和表达", # 通常对应 C2 或更高复杂度
-    # 自定义选项保留
-    "自定义"
-]
-
-# 句子长度选择列表
-preset_lengths = [
-    # 按单词数量细分，并关联典型语境
-    "极短句 (约5-10词): 适合标题、指令或极简表达",
-    "短句 (约10-20词): 基础表达及日常简单交流", # 包含原选项15词左右
-    "中等长度句 (约25-40词): 通用对话及文章常用长度", # 包含原选项30词左右
-    "长句 (约45-60词): 包含较多修饰或从句", # 包含原选项50词左右，并暗示复杂度
-    "超长句 (60+词): 高信息密度，常见于正式及学术文本", # 进一步提高难度
-    # 按用途或理解目标划分 (长度与难度通常相关)
-    "简洁明了: 目标是快速理解核心信息，通常句子较短 (约15-30词)",
-    "标准篇幅: 适合学习通用语言，包含适当细节，长度适中 (约30-50词)",
-    "信息密集: 包含丰富的细节、修饰和逻辑关系，通常句子较长 (50+词)",
-    # 自定义选项保留
-    "自定义"
-]
 
 class ConfigDialog(QDialog):
     """配置对话框"""
@@ -191,8 +72,8 @@ class ConfigDialog(QDialog):
         api_layout = QFormLayout()
         # 添加API设置组件
 
-
         #api供应商与url组件
+        PRESET_API_URLS = current_config.get("preset_api_urls")
         self.api_provider_combo = QComboBox()
         self.api_provider_combo.addItems(PRESET_API_URLS.keys())
         api_layout.addRow("API 提供商:", self.api_provider_combo)
@@ -249,11 +130,11 @@ class ConfigDialog(QDialog):
         # 词汇量等级选择
         self.vocab_level_combo = QComboBox()
 
-
-        self.vocab_level_combo.addItems(preset_vocab_levels)
+        PRESET_VOCAB_LEVELS = current_config.get("preset_vocab_levels")
+        self.vocab_level_combo.addItems(PRESET_VOCAB_LEVELS)
         current_vocab = current_config.get("vocab_level", "大学英语四级 CET-4 (4000词)")
         self.vocab_level_custom = None # 初始化为 None
-        if current_vocab not in preset_vocab_levels[:-1]:
+        if current_vocab not in PRESET_VOCAB_LEVELS[:-1]:
             self.vocab_level_combo.setCurrentText("自定义")
             self.vocab_level_custom = QLineEdit(current_vocab)
         else:
@@ -267,11 +148,11 @@ class ConfigDialog(QDialog):
         # 学习目标选择
         self.learning_goal_combo = QComboBox()
 
-
-        self.learning_goal_combo.addItems(preset_learning_goals)
+        PRESET_LEARNING_GOALS = current_config.get("preset_learning_goals")
+        self.learning_goal_combo.addItems(PRESET_LEARNING_GOALS)
         current_goal = current_config.get("learning_goal", "提升日常浏览英文网页与资料的流畅度")
         self.learning_goal_custom = None
-        if current_goal not in preset_learning_goals[:-1]:
+        if current_goal not in PRESET_LEARNING_GOALS[:-1]:
             self.learning_goal_combo.setCurrentText("自定义")
             self.learning_goal_custom = QLineEdit(current_goal)
         else:
@@ -286,11 +167,11 @@ class ConfigDialog(QDialog):
         self.difficulty_combo = QComboBox()
 
 
-
-        self.difficulty_combo.addItems(preset_difficulties)
+        PRESET_DIFFICULTIES = current_config.get("preset_difficulties")
+        self.difficulty_combo.addItems(PRESET_DIFFICULTIES)
         current_diff = current_config.get("difficulty_level", "中级 (B1): 并列/简单复合句，稍复杂话题，扩大词汇范围") # 修正默认值以匹配列表
         self.difficulty_custom = None
-        if current_diff not in preset_difficulties[:-1]:
+        if current_diff not in PRESET_DIFFICULTIES[:-1]:
             self.difficulty_combo.setCurrentText("自定义")
             self.difficulty_custom = QLineEdit(current_diff)
         else:
@@ -302,12 +183,12 @@ class ConfigDialog(QDialog):
         self._toggle_custom_widget(self.difficulty_combo, self.difficulty_custom, prefs_layout)
 
 
-
+        PRESET_LENGTHS = current_config.get("preset_lengths")
         self.length_combo = QComboBox()
-        self.length_combo.addItems(preset_lengths)
+        self.length_combo.addItems(PRESET_LENGTHS)
         current_length = current_config.get("sentence_length_desc", "中等长度句 (约25-40词): 通用对话及文章常用长度") # 修正默认值
         self.length_custom = None
-        if current_length not in preset_lengths[:-1]:
+        if current_length not in PRESET_LENGTHS[:-1]:
             self.length_combo.setCurrentText("自定义")
             self.length_custom = QLineEdit(current_length)
         else:
@@ -595,6 +476,7 @@ class ConfigDialog(QDialog):
             # self.api_url.clear() # 用户可能想保留或修改已有的自定义URL
             self.api_url.setPlaceholderText("请输入自定义 API URL")
         else:
+            PRESET_API_URLS =  get_config().get("preset_api_urls")
             self.api_url.setText(PRESET_API_URLS.get(provider, ""))
             self.api_url.setReadOnly(True)
 
