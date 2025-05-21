@@ -21,6 +21,7 @@ PRESET_API_URLS = {
     "硅基流动": "https://api.siliconflow.cn/v1/chat/completions",
     "Moonshot AI (Kimi)": "https://api.moonshot.cn/v1/chat/completions",
     "阿里云百练": "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions",
+    "AiHubmix":"https://aihubmix.com/v1/chat/completions",
     "Ollama (localhost)": "http://localhost:11434/api/chat", # 假设Ollama在本地运行
     "自定义": "" # 自定义选项
 }
@@ -137,9 +138,9 @@ class ConfigDialog(QDialog):
     """配置对话框"""
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setWindowTitle("AI句子生成配置")
+        self.setWindowTitle("AI例句配置")
         self.setMinimumWidth(650) # 增加宽度以容纳提示词模板编辑区域
-        self.setMinimumHeight(600) # 增加高度以容纳提示词模板编辑区域
+        self.setMinimumHeight(600) #高度自适应，不做限制
 
         main_layout = QVBoxLayout(self)
         current_config = get_config()
@@ -166,38 +167,8 @@ class ConfigDialog(QDialog):
         api_group = QGroupBox("API 设置")
         api_layout = QFormLayout()
 
-        # API Provider ComboBox
-        self.api_provider_combo = QComboBox()
-        self.api_provider_combo.addItems(PRESET_API_URLS.keys())
-        api_layout.addRow("API 提供商:", self.api_provider_combo)
-
-        self.api_url = QLineEdit() # 初始化时不清空，由 _on_api_provider_changed 处理
-        api_layout.addRow("API 接口地址:", self.api_url)
-
-        # 初始化 API Provider 和 URL
-        saved_api_url = current_config.get("api_url", "")
-        provider_match = False
-        for provider, url in PRESET_API_URLS.items():
-            if url == saved_api_url and provider != "自定义":
-                self.api_provider_combo.setCurrentText(provider)
-                provider_match = True
-                break
-        if not provider_match and saved_api_url: # 如果URL存在但不在预设中，则认为是自定义
-            self.api_provider_combo.setCurrentText("自定义")
-        elif not saved_api_url and "OpenAI" in PRESET_API_URLS: # 默认选择OpenAI如果配置为空
-             self.api_provider_combo.setCurrentText("OpenAI")
-
-        self._on_api_provider_changed() # 根据 combo 初始化 URL 状态
-        self.api_url.setText(saved_api_url) # 确保加载已保存的URL，即使是自定义的
-
-        self.api_provider_combo.currentTextChanged.connect(self._on_api_provider_changed)
-
-        self.api_key = QLineEdit(current_config.get("api_key", ""))
-        self.api_key.setEchoMode(QLineEdit.EchoMode.Password)
-        api_layout.addRow("API 密钥:", self.api_key)
-
-        self.model_name = QLineEdit(current_config.get("model_name", ""))
-        api_layout.addRow("模型名称:", self.model_name)
+        # API 供应商组合框
+        self.add_api_provider_combo(api_layout,current_config)
 
         # Test API Button and Status Label
         self.test_connection_button = QPushButton("测试 API 连接")
@@ -357,6 +328,40 @@ class ConfigDialog(QDialog):
         button_layout.addWidget(button_box) # 标准按钮盒
 
         main_layout.addLayout(button_layout) # 添加按钮布局
+
+    def add_api_provider_combo(self,api_layout,current_config):
+        self.api_provider_combo = QComboBox()
+        self.api_provider_combo.addItems(PRESET_API_URLS.keys())
+        api_layout.addRow("API 提供商:", self.api_provider_combo)
+
+        self.api_url = QLineEdit() # 初始化时不清空，由 _on_api_provider_changed 处理
+        api_layout.addRow("API 接口地址:", self.api_url)
+
+        # 初始化 API Provider 和 URL
+        saved_api_url = current_config.get("api_url", "")
+        provider_match = False
+        for provider, url in PRESET_API_URLS.items():
+            if url == saved_api_url and provider != "自定义":
+                self.api_provider_combo.setCurrentText(provider)
+                provider_match = True
+                break
+        if not provider_match and saved_api_url: # 如果URL存在但不在预设中，则认为是自定义
+            self.api_provider_combo.setCurrentText("自定义")
+        elif not saved_api_url and "火山/豆包/字节（推荐）" in PRESET_API_URLS: # 默认选择OpenAI如果配置为空
+             self.api_provider_combo.setCurrentText("火山/豆包/字节（推荐）")
+
+        self._on_api_provider_changed() # 根据 combo 初始化 URL 状态
+        self.api_url.setText(saved_api_url) # 确保加载已保存的URL，即使是自定义的
+
+        self.api_provider_combo.currentTextChanged.connect(self._on_api_provider_changed)
+
+        self.api_key = QLineEdit(current_config.get("api_key", ""))
+        self.api_key.setEchoMode(QLineEdit.EchoMode.Password)
+        api_layout.addRow("API 密钥:", self.api_key)
+
+        self.model_name = QLineEdit(current_config.get("model_name", ""))
+        api_layout.addRow("模型名称:", self.model_name)
+    
 
     def setup_prompt_template_tab(self, layout, config):
         """设置提示词模板编辑选项卡"""
@@ -798,6 +803,6 @@ def show_config_dialog():
 
 def register_menu_item():
     """在工具菜单添加配置入口"""
-    action = aqt.QAction("AI句子生成配置...", aqt.mw) # 加省略号表示打开对话框
+    action = aqt.QAction("AI例句配置...", aqt.mw) # 加省略号表示打开对话框
     action.triggered.connect(show_config_dialog)
     aqt.mw.form.menuTools.addAction(action)
