@@ -12,7 +12,9 @@ from aqt.qt import (
 from .config_manager import get_config, save_config # 使用相对导入
 from .cache_manager import clear_cache
 from . import api_client # 导入 api_client 以便调用测试函数
-
+from . import main_logic
+from PyQt6.QtCore import QTimer 
+import time
 
 class ConfigDialog(QDialog):
     """配置对话框"""
@@ -56,15 +58,6 @@ class ConfigDialog(QDialog):
         # --- 添加提示词模板编辑区域---
         self.setup_prompt_template_tab(prompt_layout, current_config)
 
-
-
-        # --- 保存取消按钮 ---
-        self.button_box = QDialogButtonBox(QDialogButtonBox.StandardButton.Save | QDialogButtonBox.StandardButton.Cancel)
-        self.button_box.accepted.connect(self.save_and_close)
-        self.button_box.rejected.connect(self.reject)
-        button_layout = QHBoxLayout() # 水平布局放按钮
-        button_layout.addWidget(self.button_box)
-        main_layout.addLayout(button_layout)
 
 
     def add_api_setting(self,basic_layout,current_config):
@@ -257,6 +250,14 @@ class ConfigDialog(QDialog):
         button_layout.addStretch() # 推到右边
         basic_layout.addLayout(button_layout) # 添加按钮布局
 
+        # --- 保存取消按钮 ---
+        self.button_box = QDialogButtonBox(QDialogButtonBox.StandardButton.Save | QDialogButtonBox.StandardButton.Cancel)
+        self.button_box.accepted.connect(self.save_and_close)
+        self.button_box.rejected.connect(self.reject)
+        button_layout = QHBoxLayout() # 水平布局放按钮
+        button_layout.addWidget(self.button_box)
+        basic_layout.addLayout(button_layout)
+
     def setup_prompt_template_tab(self, layout, config):
         """设置提示词模板编辑选项卡"""
         # 提示词模板编辑区域
@@ -325,16 +326,21 @@ class ConfigDialog(QDialog):
         self.test_keyword_edit = QLineEdit()
         self.test_keyword_edit.setText("example")
         keyword_layout.addWidget(self.test_keyword_edit)
+
         test_mode_layout = QHBoxLayout()
+
         test_mode_label = QLabel("测试模式:")
         test_mode_layout.addWidget(test_mode_label)
         self.test_mode_combo = QComboBox()
         self.test_mode_combo.addItems(["生成例句", "查看提示词"])
         test_mode_layout.addWidget(self.test_mode_combo)
-        keyword_layout.addLayout(test_mode_layout)
+        test_mode_layout.addStretch()
         self.test_prompt_button = QPushButton("测试")
         self.test_prompt_button.clicked.connect(self.test_prompt_template)
-        keyword_layout.addWidget(self.test_prompt_button)
+        test_mode_layout.addWidget(self.test_prompt_button)
+        test_mode_layout.setSpacing(10) 
+        keyword_layout.addLayout(test_mode_layout)
+
         test_input_layout.addLayout(keyword_layout)
         test_result_label = QLabel("测试结果:")
         test_layout.addWidget(test_result_label)
@@ -440,10 +446,7 @@ class ConfigDialog(QDialog):
             return
 
         # 获取当前编辑的提示词模板
-        prompt_template = self.prompt_template_edit.toPlainText()
-        normal_format = self.normal_format_edit.toPlainText()
-        highlight_format = self.highlight_format_edit.toPlainText()
-
+        prompt = self.prompt_template_edit.toPlainText()
         # 获取当前配置
         config = get_config()
 
@@ -458,9 +461,6 @@ class ConfigDialog(QDialog):
             "sentence_length_desc": config.get("sentence_length_desc", "中等长度句 (约25-40词): 通用对话及文章常用长度"),
             "learning_language": config.get("learning_language", "英语"),
             "highlight_target_word": config.get("highlight_target_word", False),
-            "prompt_template": prompt_template,
-            "prompt_format_normal": normal_format,
-            "prompt_format_highlight": highlight_format
         }
 
         # 获取测试模式
@@ -469,13 +469,6 @@ class ConfigDialog(QDialog):
         # 如果是查看提示词模式
         if test_mode == "查看提示词":
             try:
-                # 根据是否高亮目标词选择不同的格式示例
-                if test_config["highlight_target_word"]:
-                    prompt = prompt_template + highlight_format
-                else:
-                    prompt = prompt_template + normal_format
-
-                # 格式化提示词
                 formatted_prompt = prompt.format(
                     world=keyword,
                     vocab_level=test_config["vocab_level"],
@@ -502,28 +495,58 @@ class ConfigDialog(QDialog):
         QApplication.processEvents() # 确保UI更新
 
         try:
-            # 调用API生成例句
-            sentence_pairs = api_client.generate_ai_sentence(test_config, keyword)
-
-            if not sentence_pairs:
-                self.test_result_edit.setText("未能生成例句，请检查API配置和提示词模板")
-                self.test_prompt_button.setEnabled(True)
-                return
-
-            # 格式化结果显示
-            result_text = f"关键词 '{keyword}' 的例句测试结果：\n\n"
-
-            for i, (sentence, translation) in enumerate(sentence_pairs, 1):
-                result_text += f"例句 {i}:\n{sentence}\n\n翻译:\n{translation}\n\n"
-
-            # 显示结果
-            self.test_result_edit.setText(result_text)
+            # 使用主逻辑任务队列处理生成请求
+            main_logic.task_queue.put((0, keyword))
+            
+            # 初始化等待逻辑
+            start_time = time.time()
+            max_wait = 60  # 最大等待60秒
+            check_interval = 1  # 每秒检查一次缓存
+            
+            # 创建定时器用于检查缓存（需在主线程执行）
+            timer = QTimer()
+            timer.setInterval(check_interval * 1000)
+            
+            def check_cache():
+                elapsed = time.time() - start_time
+                if elapsed >= max_wait:
+                    # 超时处理
+                    timer.stop()
+                    self.test_result_edit.setText("生成失败：超时未获取到结果")
+                    self.test_prompt_button.setEnabled(True)
+                    return
+                
+                # 加锁检查缓存
+                with main_logic.cache_lock:
+                    cache = main_logic.load_cache()
+                    if keyword in cache and cache[keyword]:
+                        # 找到有效缓存
+                        timer.stop()
+                        sentence_pairs = cache[keyword]
+                        
+                        # 格式化所有例句对显示
+                        result_text = f"关键词 '{keyword}' 的例句测试结果：\n\n"
+                        for i, (sentence, translation) in enumerate(sentence_pairs, 1):
+                            result_text += f"例句 {i}:\n{sentence}\n\n翻译:\n{translation}\n\n"
+                        
+                        # 删除整个缓存条目（一个不剩）
+                        del cache[keyword]
+                        main_logic.save_cache(cache)
+                        
+                        self.test_result_edit.setText(result_text)
+                        self.test_prompt_button.setEnabled(True)
+            
+            timer.timeout.connect(check_cache)
+            timer.start()
+            
+            # 初始提示
+            self.test_result_edit.setText("已提交生成请求，正在等待结果...")
 
         except Exception as e:
             self.test_result_edit.setText(f"测试错误: {str(e)}")
             traceback.print_exc() # 打印详细错误信息到控制台
         finally:
-            self.test_prompt_button.setEnabled(True)
+            # 按钮在定时器结束时恢复，此处不重复启用
             QApplication.processEvents() # 确保UI更新
 
     def _on_api_provider_changed(self):
@@ -541,7 +564,7 @@ class ConfigDialog(QDialog):
     def _prompt_change(self):
         pass
     def _test_api_connection(self):
-        """处理测试API连接按钮点击事件（现在是同步的）"""
+        """处理测试API连接按钮点击事件"""
         api_url = self.api_url.text()
         api_key = self.api_key.text()
         model_name = self.model_name.text()
@@ -576,12 +599,6 @@ class ConfigDialog(QDialog):
             else: # 无结果也无错误，可能是API返回空内容
                 self.test_status_label.setText(f"<font color='orange'>测试完成但未收到明确内容 ({elapsed_time:.2f}s).</font>")
 
-        except requests.exceptions.Timeout: # Catching specific requests timeout
-            elapsed_time = time.time() - start_time
-            self.test_status_label.setText(f"<font color='red'>测试失败: 超时 ({elapsed_time:.2f}s)。请检查网络或API端点。</font>")
-        except requests.exceptions.RequestException as e: # Catching other requests errors
-            elapsed_time = time.time() - start_time
-            self.test_status_label.setText(f"<font color='red'>测试失败: 请求错误 ({elapsed_time:.2f}s): {str(e)}</font>")
         except Exception as e: # 捕获其他意外错误
             elapsed_time = time.time() - start_time
             # traceback.print_exc() # 打印详细错误到控制台，便于调试
@@ -727,11 +744,7 @@ class ConfigDialog(QDialog):
             "difficulty_level": self._get_combo_value(self.difficulty_combo, getattr(self, 'difficulty_custom', None)),
             "sentence_length_desc": self._get_combo_value(self.length_combo, getattr(self, 'length_custom', None)),
             "learning_language": self.learning_language_combo.currentText(),
-            "highlight_target_word": self.highlight_target_word_combo.currentText() == "是",
-            # 保存提示词模板设置
-            "prompt_template": self.prompt_template_edit.toPlainText(),
-            "prompt_format_normal": self.normal_format_edit.toPlainText(),
-            "prompt_format_highlight": self.highlight_format_edit.toPlainText(),
+            "highlight_target_word": self.highlight_target_word_combo.currentText() == "是"
         }
         save_config(new_config) # 调用 config_manager 中的保存函数
         QMessageBox.information(self, "成功", "配置已保存。") # 提示用户
