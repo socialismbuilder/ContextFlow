@@ -273,8 +273,8 @@ def on_card_render(html: str, card: Card, context: str) -> str:
         return html # 获取失败则不处理
 
     # 仅目标牌组生效
-    #if current_deck == config.get("deck_name"): # 使用 .get 避免 KeyError
-    if current_deck == config.get("deck_name") or current_deck.startswith(config.get("deck_name") + "::"):
+    print(card.ord)
+    if (current_deck == config.get("deck_name") or current_deck.startswith(config.get("deck_name") + "::")) and card.ord == 0:
     # 当前牌组匹配配置的牌组（相同或子目录）
 
         # 获取当前复习器状态（'question' 或 'answer'）
