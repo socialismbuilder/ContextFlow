@@ -7,7 +7,8 @@ import typing # Add typing for Optional
 import re
 # Configuration details are dynamically loaded from user settings via config_manager
 
-prompt1 = '''
+# 默认提示词模板 - 现在从配置中读取
+DEFAULT_PROMPT_TEMPLATE = '''
 请为{language}学习者生成5个包含关键词 ‘{world}’ 的{language}例句，并附带中文翻译。
 
 学习者信息：
@@ -37,7 +38,8 @@ prompt1 = '''
 - **绝对不要** 输出任何其他内容，如序号、标题、解释或额外字段
 - 必须以`sentences`命名变量，而不是{world}'''
 
-prompt21 = '''
+# 默认格式示例 - 普通版本
+DEFAULT_FORMAT_NORMAL = '''
 
 示例JSON输出：
 {{
@@ -57,8 +59,8 @@ prompt21 = '''
 示例仅为格式参考。语言，难度，句子长度等信息请按照生成规则。请严格按照上述要求生成。
 '''
 
-
-prompt22 = '''
+# 默认格式示例 - 高亮版本
+DEFAULT_FORMAT_HIGHLIGHT = '''
 - 翻译需要自然准确，并在关键词前后，以及翻译的对应或相关部分，加上<u>标签强调显示。
 示例JSON输出：
 {{
@@ -87,43 +89,26 @@ DEFAULT_CONFIG = {
     "difficulty_level": "中级 (B1): 并列/简单复合句，稍复杂话题，扩大词汇范围",
     "sentence_length_desc": "中等长度句 (约25-40词): 通用对话及文章常用长度",
     "learning_language":"英语",
-    "highlight_target_word":False
+    "prompt_name":"默认-不标记目标词"
 }
 
-def generate_ai_sentence(config, keyword):
-    """
-    同步调用AI接口生成包含关键词的例句。
-    直接返回例句对列表（[[英文, 中文], ...]）或在出错时抛出异常。
-    """
-    # Merge default config with provided config if necessary, or just use provided
+def get_prompts(config):
+
+    custom_prompts = config.get("custom_prompts", {})
+    prompt_name = config.get("prompt_name", DEFAULT_CONFIG["prompt_name"])
+    if prompt_name == "默认-不标记目标词":
+        prompt = DEFAULT_PROMPT_TEMPLATE + DEFAULT_FORMAT_NORMAL
+    elif prompt_name == "默认-标记目标词":
+        prompt = DEFAULT_PROMPT_TEMPLATE + DEFAULT_FORMAT_HIGHLIGHT
+    else:
+        custom_prompts = config.get("custom_prompts", {})
+        prompt = custom_prompts.get(prompt_name,DEFAULT_PROMPT_TEMPLATE + DEFAULT_FORMAT_NORMAL)
+    return prompt
+
+def get_api_response(config,formatted_prompt):
     api_url = config.get("api_url")
     api_key = config.get("api_key")
     model_name = config.get("model_name")
-    vocab_level = config.get("vocab_level", DEFAULT_CONFIG["vocab_level"])
-    learning_goal = config.get("learning_goal", DEFAULT_CONFIG["learning_goal"])
-    difficulty_level = config.get("difficulty_level", DEFAULT_CONFIG["difficulty_level"])
-    sentence_length_desc = config.get("sentence_length_desc", DEFAULT_CONFIG["sentence_length_desc"])
-    learning_language = config.get("learning_language",DEFAULT_CONFIG["learning_language"])
-
-    highlight_target_word = config.get("highlight_target_word",DEFAULT_CONFIG["highlight_target_word"])
-
-    if highlight_target_word:
-        prompt = prompt1+prompt22
-    else:
-        prompt = prompt1+prompt21
-
-    if not api_url or not api_key or not model_name:
-        raise ValueError("API URL, Key, or Model Name missing in config.")
-
-    formatted_prompt = prompt.format(
-        world=keyword,
-        vocab_level=vocab_level,
-        learning_goal=learning_goal,
-        difficulty_level=difficulty_level,
-        sentence_length_desc=sentence_length_desc,
-        language = learning_language
-    )
-    
     try:
         response = requests.post(
             api_url,
@@ -137,58 +122,101 @@ def generate_ai_sentence(config, keyword):
         )
 
         response.raise_for_status() # Raise HTTPError for bad responses (4xx or 5xx)
+        return response
+    #出现异常print出来
+    except requests.exceptions.RequestException as e:
+        print(f"错误：[get_api_response] 网络错误：{e}")
+        return None
+    except Exception as e: # Catch other unexpected errors during the process
+        print(f"错误：[get_api_response] 意外错误：{type(e).__name__} - {e}")
+        return None
 
-        # Parse JSON response
-        try:
-            response_json = response.json()
-            message_content = response_json["choices"][0]["message"]["content"]
-        except (KeyError, IndexError, json.JSONDecodeError) as e:
-            print(f"错误：[generate_ai_sentence] 无法从API响应中提取/解析内容，关键词：'{keyword}'。错误：{e}。响应文本：{response.text[:500]}")
-            #用户不应该看到报错，raise都注释掉
-            #raise ValueError(f"API响应格式错误：{e}") from e 
+def get_message_content(response,keyword):
+    try:
+        response_json = response.json()
+        message_content = response_json["choices"][0]["message"]["content"]
+        return message_content
+    except (KeyError, IndexError, json.JSONDecodeError) as e:
+        print(f"错误：[get_message_content] 无法从API响应中提取/解析内容，关键词：'{keyword}'。错误：{e}。响应文本：{response.text[:500]}")
+        return None
+        #用户不应该看到报错，raise都注释掉
+        #raise ValueError(f"API响应格式错误：{e}") from e
 
-        # Parse the nested JSON content
-        try:
-            message_content = re.sub(r'(^```(?:[a-zA-Z0-9]+)?\s*\n|\s*```\s*$)', '', message_content, flags=re.DOTALL)
-            message_content_json = json.loads(message_content)
-            sentence_pairs_raw = message_content_json.get("sentences")
-        except json.JSONDecodeError as e:
-            sentence_pairs_raw = []
-            print(f"错误：[generate_ai_sentence] API消息内容对于关键字'{keyword}'不是有效的JSON格式：{message_content[:500]}")
-            #raise ValueError("API returned non-JSON content") from e
+def parse_message_content_to_sentence_pairs(message_content: str, keyword: str) -> list:
+    """
+    将API返回的message_content解析为句子对列表[[语言例句, 中文翻译], ...]
+    :param message_content: API返回的原始消息内容
+    :param keyword: 当前处理的关键词（用于错误提示）
+    :return: 有效的句子对列表，空列表表示无有效数据
+    """
+    # 清理可能的代码块标记
+    try:
+        cleaned_content = re.sub(r'(^```(?:[a-zA-Z0-9]+)?\s*\n|\s*```\s*$)', '', message_content, flags=re.DOTALL)
+        content_json = json.loads(cleaned_content)
+        raw_pairs = content_json.get("sentences")
+    except json.JSONDecodeError:
+        print(f"错误：[parse_message_content_to_sentence_pairs] 关键字'{keyword}'的响应非JSON格式：{message_content[:200]}")
+        return []
+    
+    # 验证sentences字段类型
+    if not isinstance(raw_pairs, list):
+        print(f"错误：[parse_message_content_to_sentence_pairs] 关键字'{keyword}'未找到有效sentences列表")
+        return []
+    
+    # 验证每个句子对格式
+    valid_pairs = []
+    for pair in raw_pairs:
+        if isinstance(pair, list) and len(pair) == 2 and all(isinstance(item, str) for item in pair):
+            valid_pairs.append(pair)
+        else:
+            print(f"警告：[parse_message_content_to_sentence_pairs] 关键字'{keyword}'跳过无效配对：{pair}")
+    
+    if not valid_pairs:
+        print(f"警告：[parse_message_content_to_sentence_pairs] 关键字'{keyword}'未找到有效句子对")
+    
+    return valid_pairs
 
 
-        if not isinstance(sentence_pairs_raw, list):
+def generate_ai_sentence(config, keyword,prompt = None):
+    """
+    同步调用AI接口生成包含关键词的例句。
+    直接返回例句对列表（[[英文, 中文], ...]）或在出错时抛出异常。
+    """
+    # Merge default config with provided config if necessary, or just use provided
 
-            print(f"错误：[generate_ai_sentence] 在关键字'{keyword}'的API响应中未找到'sentences'键或其不是列表。内容：{message_content_json}")
-            #raise ValueError("API response missing 'sentences' list")
+    vocab_level = config.get("vocab_level", DEFAULT_CONFIG["vocab_level"])
+    learning_goal = config.get("learning_goal", DEFAULT_CONFIG["learning_goal"])
+    difficulty_level = config.get("difficulty_level", DEFAULT_CONFIG["difficulty_level"])
+    sentence_length_desc = config.get("sentence_length_desc", DEFAULT_CONFIG["sentence_length_desc"])
+    learning_language = config.get("learning_language", DEFAULT_CONFIG["learning_language"])
 
-        # Convert to list of lists and validate format
-        sentence_pairs = []
-        for pair in sentence_pairs_raw:
-            if isinstance(pair, list) and len(pair) == 2 and isinstance(pair[0], str) and isinstance(pair[1], str):
-                sentence_pairs.append(pair) # Store as list of lists directly
-            else:
-                #print(f"WARNING: [generate_ai_sentence] Skipping invalid pair format in response for '{keyword}': {pair}")
-                print(f"警告：[generate_ai_sentence] 跳过关键字'{keyword}'的响应中无效的配对格式：{pair}")
+    # 没有输入prompt则执行获取prompt函数
+    if prompt == None:
+        prompt = get_prompts(config)
 
+    formatted_prompt = prompt.format(
+        world=keyword,
+        vocab_level=vocab_level,
+        learning_goal=learning_goal,
+        difficulty_level=difficulty_level,
+        sentence_length_desc=sentence_length_desc,
+        language = learning_language
+    )
+
+    try:
+        response = get_api_response(config,formatted_prompt)
+        message_content = get_message_content(response, keyword)
+        sentence_pairs = parse_message_content_to_sentence_pairs(message_content, keyword)
         if not sentence_pairs:
-            print(f"警告：[generate_ai_sentence] 在解析关键词 '{keyword}' 后未找到有效的句子对。")
-            # 决定是抛出错误还是返回空列表
-            # 如果API有时返回空值，返回空列表可能是可以接受的
             return [] # Return empty list if no valid pairs
-
 
         return sentence_pairs # Return list of lists [[en, cn], ...]
 
-    except requests.exceptions.RequestException as e:
-        print(f"错误：[generate_ai_sentence] 关键词 '{keyword}' 的网络错误：{e}")
-        #raise ConnectionError(f"Network error: {e}") from e
     except Exception as e: # Catch other unexpected errors during the process
-        #print(f"ERROR: [generate_ai_sentence] Unexpected error for keyword '{keyword}': {type(e).__name__} - {e}")
         print(f"错误：[generate_ai_sentence] 关键字 '{keyword}' 出现意外错误：{type(e).__name__} - {e}")
         traceback.print_exc()
-        #raise RuntimeError(f"Unexpected error: {e}") from e
+
+
 
 # 新的同步测试函数，替代之前的异步流式版本
 def test_api_sync(
@@ -209,7 +237,7 @@ def test_api_sync(
     payload = {
         "model": model_name,
         "messages": [{"role": "user", "content": "不要有任何多余其他输出，重复一遍这个词: Hello"}],
-        "max_tokens": 50  
+        "max_tokens": 50
     }
 
     try:
@@ -232,7 +260,7 @@ def test_api_sync(
             return None, f"API错误 {response.status_code}: {error_msg_detail[:200]}" # 限制错误信息长度
 
         response_json = response.json()
-        
+
         # 提取内容 - 这种结构对于类OpenAI的API是常见的
         # 如果目标API具有不同的响应结构，请进行调整
         if response_json.get("choices") and \
@@ -241,7 +269,7 @@ def test_api_sync(
            response_json["choices"][0].get("message") and \
            isinstance(response_json["choices"][0]["message"], dict) and \
            response_json["choices"][0]["message"].get("content"):
-            
+
             content = response_json["choices"][0]["message"]["content"]
             return content.strip(), None # 返回提取到的内容
         else:

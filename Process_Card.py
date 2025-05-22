@@ -2,13 +2,10 @@ import re
 from .config_manager import get_config
 
 def Process_front_html(showing_sentence):
-    config = get_config()
-    highlight_target_word = config.get("highlight_target_word")
+
     pattern = re.compile(r'<u>(.*?)</u>')
-    if highlight_target_word:
-        showing_sentence = pattern.sub(r'<span style="border-radius:8px; background-color:rgba(255, 150, 150, 0.7); padding:4px 8px;">\1</span> ', showing_sentence)
-    else:
-        showing_sentence = pattern.sub(r'\1', showing_sentence)
+    showing_sentence = pattern.sub(r'<span style="border-radius:8px; background-color:rgba(255, 150, 150, 0.7); padding:4px 8px;">\1</span> ', showing_sentence)
+    
     return f"""
     <div style="margin: 10px;">
         <!-- 例句卡片 -->
@@ -34,15 +31,10 @@ def Process_front_html(showing_sentence):
         </div>""" 
 
 def Process_back_html(showing_sentence, showing_translation, html):
-    config = get_config()
-    highlight_target_word = config.get("highlight_target_word")
+
     pattern = re.compile(r'<u>(.*?)</u>')
-    if highlight_target_word:
-        showing_sentence = pattern.sub(r'<span style="border-radius:8px; background-color:rgba(255, 150, 150, 0.7); padding:4px 8px;">\1</span> ', showing_sentence)
-        showing_translation = pattern.sub(r'<span style="border-radius:8px; background-color:rgba(255, 150, 150, 0.7); padding:4px 8px;">\1</span> ', showing_translation)
-    else:
-        showing_sentence = pattern.sub(r'\1', showing_sentence)
-        showing_translation = pattern.sub(r'\1', showing_translation)
+    showing_sentence = pattern.sub(r'<span style="border-radius:8px; background-color:rgba(255, 150, 150, 0.7); padding:4px 8px;">\1</span> ', showing_sentence)
+    showing_translation = pattern.sub(r'<span style="border-radius:8px; background-color:rgba(255, 150, 150, 0.7); padding:4px 8px;">\1</span> ', showing_translation)
     
     return f"""
     <div style="margin: 10px;">
