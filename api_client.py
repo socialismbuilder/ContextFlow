@@ -89,20 +89,20 @@ DEFAULT_CONFIG = {
     "difficulty_level": "中级 (B1): 并列/简单复合句，稍复杂话题，扩大词汇范围",
     "sentence_length_desc": "中等长度句 (约25-40词): 通用对话及文章常用长度",
     "learning_language":"英语",
-    "highlight_target_word":"默认-不标记目标词"
+    "prompt_name":"默认-不标记目标词"
 }
 
 def get_prompts(config):
 
     custom_prompts = config.get("custom_prompts", {})
-    highlight_target_word = config.get("highlight_target_word", DEFAULT_CONFIG["highlight_target_word"])
-    if highlight_target_word == "默认-不标记目标词":
+    prompt_name = config.get("prompt_name", DEFAULT_CONFIG["prompt_name"])
+    if prompt_name == "默认-不标记目标词":
         prompt = DEFAULT_PROMPT_TEMPLATE + DEFAULT_FORMAT_NORMAL
-    elif highlight_target_word == "默认-标记目标词":
+    elif prompt_name == "默认-标记目标词":
         prompt = DEFAULT_PROMPT_TEMPLATE + DEFAULT_FORMAT_HIGHLIGHT
     else:
         custom_prompts = config.get("custom_prompts", {})
-        prompt = custom_prompts.get(highlight_target_word,DEFAULT_PROMPT_TEMPLATE + DEFAULT_FORMAT_NORMAL)
+        prompt = custom_prompts.get(prompt_name,DEFAULT_PROMPT_TEMPLATE + DEFAULT_FORMAT_NORMAL)
     return prompt
 
 def get_api_response(config,formatted_prompt):

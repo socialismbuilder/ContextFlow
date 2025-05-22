@@ -8,7 +8,7 @@
     "difficulty_level": "中级 (B1): 并列/简单复合句，稍复杂话题，扩大词汇范围",
     "sentence_length_desc": "中等长度句 (约25-40词): 通用对话及文章常用长度",
     "learning_language":"英语",
-    "highlight_target_word": "默认-不标记目标词",
+    "prompt_name": "默认-不标记目标词",
     "preset_api_urls": {
         "火山/豆包/字节（推荐）": "https://ark.cn-beijing.volces.com/api/v3/chat/completions",
         "deepseek": "https://api.deepseek.com/v1/chat/completions",

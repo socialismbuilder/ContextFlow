@@ -21,7 +21,7 @@ class ConfigDialog(QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setWindowTitle("AI例句配置")
-        #self.setMinimumWidth(650) # 增加宽度以容纳提示词模板编辑区域
+        #self.setMinimumWidth(650) # 增加宽度以容纳提示词编辑区域
         #self.setMinimumHeight(600) #高度自适应，不做限制
 
         main_layout = QVBoxLayout(self)
@@ -34,13 +34,13 @@ class ConfigDialog(QDialog):
         self.basic_tab = QWidget()
         basic_layout = QVBoxLayout(self.basic_tab)
 
-        # 创建提示词模板选项卡
+        # 创建提示词编辑器选项卡
         self.prompt_tab = QWidget()
         prompt_layout = QVBoxLayout(self.prompt_tab)
 
         # 添加选项卡到选项卡控件
         self.tab_widget.addTab(self.basic_tab, "基本设置")
-        self.tab_widget.addTab(self.prompt_tab, "提示词模板")
+        self.tab_widget.addTab(self.prompt_tab, "提示词编辑器")
 
         # 将选项卡控件添加到主布局
         main_layout.addWidget(self.tab_widget)
@@ -55,7 +55,7 @@ class ConfigDialog(QDialog):
         # --- 其他设置 ---
         self.add_othersetting(basic_layout,current_config)
 
-        # --- 添加提示词模板编辑区域---
+        # --- 添加提示词编辑区域---
         self.setup_prompt_template_tab(prompt_layout, current_config)
 
 
@@ -213,18 +213,18 @@ class ConfigDialog(QDialog):
         else: # 如果保存的语言不在列表中，默认选择英语
             self.learning_language_combo.setCurrentText("英语")
 
-        # 提示词选择下拉选框 (沿用 highlight_target_word_combo 作为控件名，但功能是选择提示词)
-        self.highlight_target_word_combo = QComboBox()
+        # 提示词选择下拉选框 (沿用 prompt_name_combo 作为控件名，但功能是选择提示词)
+        self.prompt_name_combo = QComboBox()
         custom_prompts = current_config.get("custom_prompts", {})
         prompt_choices = ["默认-不标记目标词", "默认-标记目标词"] + list(custom_prompts.keys())
-        self.highlight_target_word_combo.addItems(prompt_choices)
+        self.prompt_name_combo.addItems(prompt_choices)
         
-        # 直接使用 highlight_target_word 键名加载，默认为 "默认-不标记目标词"
-        saved_prompt_selection = current_config.get("highlight_target_word", "默认-不标记目标词")
+        # 直接使用 prompt_name 键名加载，默认为 "默认-不标记目标词"
+        saved_prompt_selection = current_config.get("prompt_name", "默认-不标记目标词")
         if saved_prompt_selection in prompt_choices:
-            self.highlight_target_word_combo.setCurrentText(saved_prompt_selection)
+            self.prompt_name_combo.setCurrentText(saved_prompt_selection)
         else:
-            self.highlight_target_word_combo.setCurrentText("默认-不标记目标词")
+            self.prompt_name_combo.setCurrentText("默认-不标记目标词")
                  
 
 
@@ -234,7 +234,7 @@ class ConfigDialog(QDialog):
         learning_options_layout.addWidget(self.learning_language_combo)
         learning_options_layout.addSpacing(20)
         learning_options_layout.addWidget(QLabel("提示词选择:")) # 标签改为“提示词选择”
-        learning_options_layout.addWidget(self.highlight_target_word_combo)
+        learning_options_layout.addWidget(self.prompt_name_combo)
         learning_options_layout.addStretch()
 
         # 将水平布局添加到表单布局中
@@ -268,13 +268,13 @@ class ConfigDialog(QDialog):
         basic_layout.addLayout(button_layout)
 
     def setup_prompt_template_tab(self, layout, config):
-        """编辑提示词模板编辑选项卡"""
-        # 提示词模板编辑区域
+        """编辑提示词编辑选项卡"""
+        # 提示词编辑区域
         prompt_group = QGroupBox("提示词编辑")
         prompt_layout = QVBoxLayout()
 
-        # 提示词模板说明
-        help_label = QLabel("提示词模板用于生成AI例句。可以使用以下占位符：")
+        # 提示词编辑区域说明
+        help_label = QLabel("提示词编辑器用于编辑测试自定义提示词。可以使用以下占位符：")
         help_label.setWordWrap(True)
         prompt_layout.addWidget(help_label)
 
@@ -289,7 +289,7 @@ class ConfigDialog(QDialog):
 
         prompt_layout.addLayout(grid_layout)
 
-        # 主提示词模板编辑区
+        # 提示词编辑区
         edit_prompt_layout = QHBoxLayout()
         edit_prompt = QLabel("提示词编辑:")
         edit_prompt_layout.addWidget(edit_prompt)
@@ -418,13 +418,13 @@ class ConfigDialog(QDialog):
             QMessageBox.warning(self, "错误", "未找到该存储提示词")
         #更新设置界面选框
         current_items = ["默认-不标记目标词", "默认-标记目标词"] + list(custom_prompts.keys())
-        self.highlight_target_word_combo.clear()
-        self.highlight_target_word_combo.addItems(current_items)
-        saved_prompt_selection = config.get("highlight_target_word", "默认-不标记目标词")
+        self.prompt_name_combo.clear()
+        self.prompt_name_combo.addItems(current_items)
+        saved_prompt_selection = config.get("prompt_name", "默认-不标记目标词")
         if saved_prompt_selection in current_items:
-            self.highlight_target_word_combo.setCurrentText(saved_prompt_selection)
+            self.prompt_name_combo.setCurrentText(saved_prompt_selection)
         else:
-            self.highlight_target_word_combo.setCurrentText("默认-不标记目标词")
+            self.prompt_name_combo.setCurrentText("默认-不标记目标词")
 
 
     def save_custom_prompt(self):
@@ -457,25 +457,25 @@ class ConfigDialog(QDialog):
         self.load_selected_prompt(prompt_name)
         #更新设置界面选框
         current_items = ["默认-不标记目标词", "默认-标记目标词"] + list(custom_prompts.keys())
-        self.highlight_target_word_combo.clear()
-        self.highlight_target_word_combo.addItems(current_items)
-        saved_prompt_selection = config.get("highlight_target_word", "默认-不标记目标词")
+        self.prompt_name_combo.clear()
+        self.prompt_name_combo.addItems(current_items)
+        saved_prompt_selection = config.get("prompt_name", "默认-不标记目标词")
         if saved_prompt_selection in current_items:
-            self.highlight_target_word_combo.setCurrentText(saved_prompt_selection)
+            self.prompt_name_combo.setCurrentText(saved_prompt_selection)
         else:
-            self.highlight_target_word_combo.setCurrentText("默认-不标记目标词")
+            self.prompt_name_combo.setCurrentText("默认-不标记目标词")
 
 
         QMessageBox.information(self, "成功", "提示词保存完成")
 
     def test_prompt_template(self):
-        """测试提示词模板"""
+        """测试提示词编辑器"""
         keyword = self.test_keyword_edit.text()
         if not keyword:
             self.test_result_edit.setText("请输入测试关键词")
             return
 
-        # 获取当前编辑的提示词模板
+        # 获取当前编辑的提示词编辑器
         prompt = self.prompt_template_edit.toPlainText()
         # 获取当前配置
         test_config = get_config()
@@ -727,7 +727,7 @@ class ConfigDialog(QDialog):
             "difficulty_level": self._get_combo_value(self.difficulty_combo, getattr(self, 'difficulty_custom', None)),
             "sentence_length_desc": self._get_combo_value(self.length_combo, getattr(self, 'length_custom', None)),
             "learning_language": self.learning_language_combo.currentText(),
-            "highlight_target_word": self.highlight_target_word_combo.currentText() # 键名保持 highlight_target_word
+            "prompt_name": self.prompt_name_combo.currentText() # 键名保持 prompt_name
         }
         
         # 从旧配置中继承 custom_prompts, preset_api_urls 等，因为它们不在UI上直接编辑，但需要保留
