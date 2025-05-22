@@ -2,3 +2,4 @@ __pycache__/
 meta.json
 sentence_cache.json
 release/
+.idea/
