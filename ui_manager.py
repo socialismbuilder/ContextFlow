@@ -251,19 +251,19 @@ class ConfigDialog(QDialog):
         other_group.setLayout(other_layout)
         basic_layout.addWidget(other_group)
 
-        # 删除缓存按钮
+        # 删除缓存按钮和保存取消按钮合并布局
         del_cache_btn = QPushButton("删除缓存")
         del_cache_btn.clicked.connect(self.clear_cache_and_notify)
-        button_layout = QHBoxLayout() # 水平布局放按钮
-        button_layout.addWidget(del_cache_btn)
-        button_layout.addStretch() # 推到右边
-        basic_layout.addLayout(button_layout) # 添加按钮布局
-
+        
         # --- 保存取消按钮 ---
         self.button_box = QDialogButtonBox(QDialogButtonBox.StandardButton.Save | QDialogButtonBox.StandardButton.Cancel)
         self.button_box.accepted.connect(self.save_and_close)
         self.button_box.rejected.connect(self.reject)
-        button_layout = QHBoxLayout() # 水平布局放按钮
+        
+        # 合并到同一水平布局
+        button_layout = QHBoxLayout()
+        button_layout.addWidget(del_cache_btn)
+        button_layout.addStretch()  # 中间填充空间
         button_layout.addWidget(self.button_box)
         basic_layout.addLayout(button_layout)
 
