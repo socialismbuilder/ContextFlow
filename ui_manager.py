@@ -325,7 +325,7 @@ class ConfigDialog(QDialog):
         self.prompt_source_combo.currentTextChanged.connect(self.load_selected_prompt)
         self.load_selected_prompt(self.prompt_source_combo.currentText())
 
-        # 测试区域（保持原有逻辑）
+        # 测试区域
         test_group = QGroupBox("提示词测试")
         test_layout = QVBoxLayout()
         test_input_layout = QHBoxLayout()
@@ -416,6 +416,16 @@ class ConfigDialog(QDialog):
             QMessageBox.information(self, "成功", "提示词删除完成")
         else:
             QMessageBox.warning(self, "错误", "未找到该存储提示词")
+        #更新设置界面选框
+        current_items = ["默认-不标记目标词", "默认-标记目标词"] + list(custom_prompts.keys())
+        self.highlight_target_word_combo.clear()
+        self.highlight_target_word_combo.addItems(current_items)
+        saved_prompt_selection = config.get("highlight_target_word", "默认-不标记目标词")
+        if saved_prompt_selection in current_items:
+            self.highlight_target_word_combo.setCurrentText(saved_prompt_selection)
+        else:
+            self.highlight_target_word_combo.setCurrentText("默认-不标记目标词")
+
 
     def save_custom_prompt(self):
         """保存自定义提示词"""
@@ -445,13 +455,11 @@ class ConfigDialog(QDialog):
         self.prompt_source_combo.addItems(current_items)
         self.prompt_source_combo.setCurrentText(prompt_name)
         self.load_selected_prompt(prompt_name)
-        #todo改一下配置
+        #更新设置界面选框
         current_items = ["默认-不标记目标词", "默认-标记目标词"] + list(custom_prompts.keys())
         self.highlight_target_word_combo.clear()
         self.highlight_target_word_combo.addItems(current_items)
-        self.highlight_target_word_combo.setCurrentText(prompt_name)
-        current_config = get_config()
-        saved_prompt_selection = current_config.get("highlight_target_word", "默认-不标记目标词")
+        saved_prompt_selection = config.get("highlight_target_word", "默认-不标记目标词")
         if saved_prompt_selection in current_items:
             self.highlight_target_word_combo.setCurrentText(saved_prompt_selection)
         else:
@@ -514,7 +522,6 @@ class ConfigDialog(QDialog):
 
             if not sentence_pairs:
                 self.test_result_edit.setText("例句生成失败，原始输出内容为：\n"+text_content)
-                self.test_prompt_button.setEnabled(True)
                 return
 
             # 格式化结果显示
@@ -530,6 +537,7 @@ class ConfigDialog(QDialog):
             self.test_result_edit.setText(f"测试错误: {str(e)}")
             traceback.print_exc() # 打印详细错误信息到控制台
         finally:
+            self.test_prompt_button.setEnabled(True)
             # 按钮在定时器结束时恢复，此处不重复启用
             QApplication.processEvents() # 确保UI更新
 
@@ -709,15 +717,6 @@ class ConfigDialog(QDialog):
 
     def save_and_close(self):
         """保存配置并关闭对话框"""
-        # API URL 根据 provider combo 和 api_url line edit 决定
-        # api_url_to_save = ""
-        # selected_provider = self.api_provider_combo.currentText()
-        # if selected_provider == "自定义":
-        #     api_url_to_save = self.api_url.text()
-        # else:
-        #     api_url_to_save = PRESET_API_URLS.get(selected_provider, "")
-        # 直接读取 self.api_url.text() 即可，因为 _on_api_provider_changed 已经更新了它
-
         new_config = {
             "api_url": self.api_url.text(), # api_url 文本框的值在选择预设时已更新或在自定义时可编辑
             "api_key": self.api_key.text(),
