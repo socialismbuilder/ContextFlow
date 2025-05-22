@@ -479,27 +479,25 @@ class ConfigDialog(QDialog):
         prompt = self.prompt_template_edit.toPlainText()
         # 获取当前配置
         test_config = get_config()
+        try:
+            formatted_prompt = prompt.format(
+                world=keyword,
+                vocab_level=test_config["vocab_level"],
+                learning_goal=test_config["learning_goal"],
+                difficulty_level=test_config["difficulty_level"],
+                sentence_length_desc=test_config["sentence_length_desc"],
+                language=test_config["learning_language"]
+            )
+        except Exception as e:
+            self.test_result_edit.setText(f"提示词格式化错误: {str(e)}")
+            return
 
         # 获取测试模式
         test_mode = self.test_mode_combo.currentText()
 
         # 如果是查看提示词模式
         if test_mode == "查看提示词":
-            try:
-                formatted_prompt = prompt.format(
-                    world=keyword,
-                    vocab_level=test_config["vocab_level"],
-                    learning_goal=test_config["learning_goal"],
-                    difficulty_level=test_config["difficulty_level"],
-                    sentence_length_desc=test_config["sentence_length_desc"],
-                    language=test_config["learning_language"]
-                )
-
-                # 显示格式化后的提示词
-                self.test_result_edit.setText(formatted_prompt)
-            except Exception as e:
-                self.test_result_edit.setText(f"提示词格式化错误: {str(e)}")
-            return
+            self.test_result_edit.setText(formatted_prompt)
 
         # 如果是生成例句模式，需要检查API配置
         if not test_config["api_url"] or not test_config["api_key"] or not test_config["model_name"]:
@@ -510,15 +508,29 @@ class ConfigDialog(QDialog):
         self.test_result_edit.setText("正在生成例句，请稍候...")
         self.test_prompt_button.setEnabled(False)
         QApplication.processEvents() # 确保UI更新
-        current_edited_prompt = self.prompt_template_edit.toPlainText()
+
+        # 导入主逻辑中的线程池
+        from . import main_logic
+
+        # 提交到主逻辑的高优先级线程池
+        future = main_logic.high_prio_executor.submit(
+            api_client.get_api_response, 
+            test_config, 
+            formatted_prompt
+        )
+
+        def handle_result(future):
+            # 将结果处理切换到主线程执行
+            aqt.mw.taskman.run_on_main(lambda: self.handle_future(future,keyword))
+
+        future.add_done_callback(handle_result)
+
+    def handle_future(self, future,keyword):
+        """独立处理异步结果的方法（确保在主线程执行）"""
         try:
-            api_response = api_client.get_api_response(test_config,current_edited_prompt)
-        except:
-            self.test_result_edit.setText("网络错误")
-        
-        text_content = api_client.get_message_content(api_response,keyword)
-        try:
-            sentence_pairs = api_client.parse_message_content_to_sentence_pairs(text_content,keyword)
+            api_response = future.result()
+            text_content = api_client.get_message_content(api_response, keyword)
+            sentence_pairs = api_client.parse_message_content_to_sentence_pairs(text_content, keyword)
 
             if not sentence_pairs:
                 self.test_result_edit.setText("例句生成失败，原始输出内容为：\n"+text_content)
@@ -526,20 +538,17 @@ class ConfigDialog(QDialog):
 
             # 格式化结果显示
             result_text = f"关键词 '{keyword}' 的例句测试结果：\n\n"
-
             for i, (sentence, translation) in enumerate(sentence_pairs, 1):
-                result_text += f"例句 {i}:\n{sentence}\n\n翻译:\n{translation}\n\n"
+                result_text += f"\n例句 {i}:\n{sentence}\n翻译:\n{translation}\n"
 
-            # 显示结果
             self.test_result_edit.setText(result_text)
-
         except Exception as e:
             self.test_result_edit.setText(f"测试错误: {str(e)}")
             traceback.print_exc() # 打印详细错误信息到控制台
         finally:
             self.test_prompt_button.setEnabled(True)
-            # 按钮在定时器结束时恢复，此处不重复启用
             QApplication.processEvents() # 确保UI更新
+
 
     def _on_api_provider_changed(self):
         """当API提供商选择变化时调用"""
@@ -582,9 +591,6 @@ class ConfigDialog(QDialog):
             elapsed_time = time.time() - start_time
 
             if error_message:
-                # 检查是否因为<think>标签导致的问题
-                if "<think>" in error_message.lower() or "inference model not supported" in error_message.lower():
-                     error_message += " (提示: 部分模型可能不支持以 <think> 开头的指令或特定推理模式)"
                 self.test_status_label.setText(f"<font color='red'>测试失败 ({elapsed_time:.2f}s): {error_message}</font>")
             elif result_text:
                 self.test_status_label.setText(f"<font color='green'>测试成功 ({elapsed_time:.2f}s)! 收到: '{result_text[:50]}...'</font>")
