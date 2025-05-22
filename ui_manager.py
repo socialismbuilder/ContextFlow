@@ -216,7 +216,7 @@ class ConfigDialog(QDialog):
         # 提示词选择下拉选框 (沿用 highlight_target_word_combo 作为控件名，但功能是选择提示词)
         self.highlight_target_word_combo = QComboBox()
         custom_prompts = current_config.get("custom_prompts", {})
-        prompt_choices = ["默认-不标记目标词", "默认-标记目标词", "空"] + list(custom_prompts.keys())
+        prompt_choices = ["默认-不标记目标词", "默认-标记目标词"] + list(custom_prompts.keys())
         self.highlight_target_word_combo.addItems(prompt_choices)
         
         # 直接使用 highlight_target_word 键名加载，默认为 "默认-不标记目标词"
@@ -224,15 +224,8 @@ class ConfigDialog(QDialog):
         if saved_prompt_selection in prompt_choices:
             self.highlight_target_word_combo.setCurrentText(saved_prompt_selection)
         else:
-            # 如果保存的值不在当前选项中（例如旧的布尔值或"是"/"否"），则回退
-            if isinstance(saved_prompt_selection, bool):
-                 self.highlight_target_word_combo.setCurrentText("默认-标记目标词" if saved_prompt_selection else "默认-不标记目标词")
-            elif saved_prompt_selection == "是":
-                 self.highlight_target_word_combo.setCurrentText("默认-标记目标词")
-            elif saved_prompt_selection == "否":
-                 self.highlight_target_word_combo.setCurrentText("默认-不标记目标词")
-            else:
-                 self.highlight_target_word_combo.setCurrentText("默认-不标记目标词")
+            self.highlight_target_word_combo.setCurrentText("默认-不标记目标词")
+                 
 
 
         # 创建一个水平布局来放置这两个下拉框
@@ -275,7 +268,7 @@ class ConfigDialog(QDialog):
         basic_layout.addLayout(button_layout)
 
     def setup_prompt_template_tab(self, layout, config):
-        """设置提示词模板编辑选项卡"""
+        """编辑提示词模板编辑选项卡"""
         # 提示词模板编辑区域
         prompt_group = QGroupBox("提示词编辑")
         prompt_layout = QVBoxLayout()
@@ -305,7 +298,7 @@ class ConfigDialog(QDialog):
         self.prompt_source_combo = QComboBox()
         current_config = get_config()
         custom_prompts = current_config.get("custom_prompts", {})
-        self.prompt_source_combo.addItems(["默认-不标记目标词", "默认-标记目标词", "空"] + list(custom_prompts.keys()))
+        self.prompt_source_combo.addItems(["默认-不标记目标词", "默认-标记目标词"] + list(custom_prompts.keys())+["空"])
         edit_prompt_layout.addWidget(self.prompt_source_combo)
 
         # 删除存储提示词按钮
@@ -383,7 +376,7 @@ class ConfigDialog(QDialog):
             self.prompt_name_edit.setText("自定义提示词")
         elif source == "空":
             content = ""
-            self.prompt_name_edit.setText("空")
+            self.prompt_name_edit.setText("自定义提示词")
         else:  # 存储的提示词
             content = custom_prompts.get(source, "")
             self.prompt_name_edit.setText(source)
@@ -435,7 +428,7 @@ class ConfigDialog(QDialog):
             return
             
         # 处理默认名称冲突
-        if prompt_name in ["默认-不标记目标词", "默认-标记目标词"]:
+        if prompt_name in ["默认-不标记目标词", "默认-标记目标词","空"]:
             prompt_name = "自定义提示词"
             self.prompt_name_edit.setText(prompt_name)
         
@@ -447,11 +440,24 @@ class ConfigDialog(QDialog):
         save_config(config)
         
         # 更新选择框
-        current_items = ["默认-不标记目标词", "默认-标记目标词", "空"] + list(custom_prompts.keys())
+        current_items = ["默认-不标记目标词", "默认-标记目标词"] + list(custom_prompts.keys())+["空"]
         self.prompt_source_combo.clear()
         self.prompt_source_combo.addItems(current_items)
         self.prompt_source_combo.setCurrentText(prompt_name)
         self.load_selected_prompt(prompt_name)
+        #todo改一下配置
+        current_items = ["默认-不标记目标词", "默认-标记目标词"] + list(custom_prompts.keys())
+        self.highlight_target_word_combo.clear()
+        self.highlight_target_word_combo.addItems(current_items)
+        self.highlight_target_word_combo.setCurrentText(prompt_name)
+        current_config = get_config()
+        saved_prompt_selection = current_config.get("highlight_target_word", "默认-不标记目标词")
+        if saved_prompt_selection in current_items:
+            self.highlight_target_word_combo.setCurrentText(saved_prompt_selection)
+        else:
+            self.highlight_target_word_combo.setCurrentText("默认-不标记目标词")
+
+
         QMessageBox.information(self, "成功", "提示词保存完成")
 
     def test_prompt_template(self):
@@ -464,21 +470,7 @@ class ConfigDialog(QDialog):
         # 获取当前编辑的提示词模板
         prompt = self.prompt_template_edit.toPlainText()
         # 获取当前配置
-        config = get_config()
-
-        # 创建临时配置用于测试
-        test_config = {
-            "api_url": config.get("api_url", ""),
-            "api_key": config.get("api_key", ""),
-            "model_name": config.get("model_name", ""),
-            "vocab_level": config.get("vocab_level", "大学英语四级 CET-4 (4000词)"),
-            "learning_goal": config.get("learning_goal", "提升日常浏览英文网页与资料的流畅度"),
-            "difficulty_level": config.get("difficulty_level", "中级 (B1): 并列/简单复合句，稍复杂话题，扩大词汇范围"),
-            "sentence_length_desc": config.get("sentence_length_desc", "中等长度句 (约25-40词): 通用对话及文章常用长度"),
-            "learning_language": config.get("learning_language", "英语"),
-            "highlight_target_word": config.get("highlight_target_word", "默认-不标记目标词"),
-            "custom_prompts":config.get("custom_prompts",{})
-        }
+        test_config = get_config()
 
         # 获取测试模式
         test_mode = self.test_mode_combo.currentText()
@@ -510,13 +502,18 @@ class ConfigDialog(QDialog):
         self.test_result_edit.setText("正在生成例句，请稍候...")
         self.test_prompt_button.setEnabled(False)
         QApplication.processEvents() # 确保UI更新
-        
+        current_edited_prompt = self.prompt_template_edit.toPlainText()
         try:
-            current_edited_prompt = self.prompt_template_edit.toPlainText()
-            sentence_pairs = api_client.generate_ai_sentence(test_config, keyword,prompt=current_edited_prompt)
+            api_response = api_client.get_api_response(test_config,current_edited_prompt)
+        except:
+            self.test_result_edit.setText("网络错误")
+        
+        text_content = api_client.get_message_content(api_response,keyword)
+        try:
+            sentence_pairs = api_client.parse_message_content_to_sentence_pairs(text_content,keyword)
 
             if not sentence_pairs:
-                self.test_result_edit.setText("未能生成例句，请检查API配置和提示词模板")
+                self.test_result_edit.setText("例句生成失败，原始输出内容为：\n"+text_content)
                 self.test_prompt_button.setEnabled(True)
                 return
 
