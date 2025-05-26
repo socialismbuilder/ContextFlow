@@ -113,8 +113,8 @@ def clean_html(raw_string):
     return cleaned
 
 
-def get_upcoming_cards(card):
 
+def get_upcoming_cards(card):
 
     config = get_config()
     deck_name = aqt.mw.col.decks.name(card.did)

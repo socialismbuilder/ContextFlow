@@ -5,6 +5,7 @@ import concurrent.futures
 import traceback
 import typing # Add typing for Optional
 import re
+from .config_manager import get_config
 # Configuration details are dynamically loaded from user settings via config_manager
 
 # 默认提示词模板 - 现在从配置中读取
@@ -104,6 +105,56 @@ def get_prompts(config):
         custom_prompts = config.get("custom_prompts", {})
         prompt = custom_prompts.get(prompt_name,DEFAULT_PROMPT_TEMPLATE + DEFAULT_FORMAT_NORMAL)
     return prompt
+
+# 新增难度排名前100关键词的函数
+def get_top_difficulty_keywords():
+    """返回学过的单词中难度排名前100的关键词列表（难度根据容易度因子逆序计算）"""
+    config = get_config()
+    try:
+        # 获取目标牌组名称
+        deck_name = config.get("deck_name")  # 从配置获取牌组ID对应的名称
+        if not deck_name:
+            print("ERROR: 未获取到有效牌组名称")
+            return []
+
+        # 查询条件：目标牌组中复习且难度≥0.6的卡片（用户要求）
+        query = f"deck:{deck_name} is:review prop:d>=0.6"
+        card_ids = aqt.mw.col.find_cards(query)
+        if not card_ids:
+            print("INFO: 牌组中无符合条件的复习卡片")
+            return []
+
+        # 获取所有卡片对象并提取FSRS难度信息
+        difficulty_keywords = []
+        for cid in card_ids:
+            card = aqt.mw.col.get_card(cid)
+            try:
+                # 获取关键词（清理HTML）
+                raw_keyword = card.note().fields[0] if card.note().fields else ""
+                keyword = clean_html(raw_keyword)
+                if not keyword:
+                    continue
+
+                # 获取FSRS记忆状态中的难度值（根据用户提供的类结构）
+                if card.memory_state is None:
+                    continue  # 跳过无记忆状态的卡片
+                difficulty = card.memory_state.difficulty
+
+                difficulty_keywords.append( (difficulty, keyword) )
+            except Exception as e:
+                print(f"ERROR: 处理卡片{cid}时出错: {str(e)}")
+                continue
+
+        # 按难度降序排序（难度越高越靠前），取前100个
+        difficulty_keywords.sort(reverse=True, key=lambda x: x[0])
+        top_keywords = [kw for (diff, kw) in difficulty_keywords[:100]]
+        print(top_keywords)
+        return top_keywords
+
+    except Exception as e:
+        print(f"ERROR: 获取难度排名关键词失败: {str(e)}")
+        return []
+
 
 def get_api_response(config,formatted_prompt):
     api_url = config.get("api_url")
