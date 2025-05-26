@@ -273,7 +273,6 @@ def on_card_render(html: str, card: Card, context: str) -> str:
         return html # 获取失败则不处理
 
     # 仅目标牌组生效
-    print(card.ord)
     if (current_deck == config.get("deck_name") or current_deck.startswith(config.get("deck_name") + "::")) and card.ord == 0:
     # 当前牌组匹配配置的牌组（相同或子目录）
 
@@ -453,7 +452,7 @@ def on_card_render(html: str, card: Card, context: str) -> str:
                             #if kw and kw not in cache and kw not in current_queue_items:
                             if kw and (kw not in cache or (not cache.get(kw))) and kw not in current_queue_items and kw != keyword:
                                 task_queue.put((1, kw)) # 被动缓存，低优先级 (1)
-                                print(f"调试：预加载 - 已将'{kw}'加入队列（优先级1）。")
+                                #print(f"调试：预加载 - 已将'{kw}'加入队列（优先级1）。")
             except Exception as e:
                 print(f"ERROR: Failed to preload keywords: {e}")
             except Exception as e:

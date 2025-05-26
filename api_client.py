@@ -132,13 +132,15 @@ def get_api_response(config,formatted_prompt):
         return None
 
 def get_message_content(response,keyword):
+    if response is None:
+        return ""
     try:
         response_json = response.json()
         message_content = response_json["choices"][0]["message"]["content"]
         return message_content
     except (KeyError, IndexError, json.JSONDecodeError) as e:
         print(f"错误：[get_message_content] 无法从API响应中提取/解析内容，关键词：'{keyword}'。错误：{e}。响应文本：{response.text[:500]}")
-        return None
+        return ""
         #用户不应该看到报错，raise都注释掉
         #raise ValueError(f"API响应格式错误：{e}") from e
 
