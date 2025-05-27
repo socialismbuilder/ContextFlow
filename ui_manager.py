@@ -287,6 +287,8 @@ class ConfigDialog(QDialog):
         grid_layout.addWidget(QLabel("{difficulty_level}:句子难度"),1,1)
         grid_layout.addWidget(QLabel("{sentence_length_desc}:句子长度"),1,2)
 
+        grid_layout.addWidget(QLabel("{second_keywords}:第二关键词"),2,0)
+
         prompt_layout.addLayout(grid_layout)
 
         # 提示词编辑区
@@ -479,6 +481,8 @@ class ConfigDialog(QDialog):
         prompt = self.prompt_template_edit.toPlainText()
         # 获取当前配置
         test_config = get_config()
+        second_keywords_str = "strand,exasperated,grudgingly,guerrilla,parish,extent,casino,carousel,hypocritical,hunch"
+        second_keywords_str = "- 在保证句子流畅的前提下，可以在每个例句中尝试融入若干以下词汇（"+second_keywords_str+"），不限制每句融入几个，也不强制融入，但必须以句子自然流畅为前提。"
         try:
             formatted_prompt = prompt.format(
                 world=keyword,
@@ -487,7 +491,7 @@ class ConfigDialog(QDialog):
                 difficulty_level=test_config["difficulty_level"],
                 sentence_length_desc=test_config["sentence_length_desc"],
                 language=test_config["learning_language"],
-                second_keywords="strand,exasperated,grudgingly,guerrilla,parish,extent,casino,carousel,hypocritical,hunch"
+                second_keywords=second_keywords_str
 
             )
         except Exception as e:

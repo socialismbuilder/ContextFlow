@@ -31,7 +31,7 @@ DEFAULT_PROMPT_TEMPLATE = '''
 （例如，给出关键词book,例句不能使用booking;给出king，例句不能使用kingdom）
 - 语境应尽量与学习目标 ({learning_goal}) 相关，或者为通用场景。
 - 每个例句必须包含关键词 ‘{world}’。
-- 在保证句子流畅的前提下，可以在每个例句中尝试融入若干以下词汇（{second_keywords}），不限制每句融入几个，也不强制融入，但必须以句子自然流畅为前提。
+{second_keywords}
 - 5个例句应尽量全面的覆盖关键词的各种用法和含义。
 
 输出格式要求：
@@ -255,12 +255,14 @@ def generate_ai_sentence(config, keyword,prompt = None):
     global top_difficulty_keywords
     if not top_difficulty_keywords:  # 列表为空时获取最新数据
         top_difficulty_keywords = get_top_difficulty_keywords()
-    
-    # 随机选取10个作为第二关键词（不足10个则全选）
-    second_keywords = random.sample(top_difficulty_keywords, 10) if len(top_difficulty_keywords)>=10 else top_difficulty_keywords
-    # 转换为逗号分隔的字符串格式
-    second_keywords_str = ", ".join(second_keywords)
-    # Merge default config with provided config if necessary, or just use provided
+    if not top_difficulty_keywords:
+        second_keywords_str = ""
+    else:
+        # 随机选取10个作为第二关键词（不足10个则全选）
+        second_keywords = random.sample(top_difficulty_keywords, 10) if len(top_difficulty_keywords)>=10 else top_difficulty_keywords
+        # 转换为逗号分隔的字符串格式
+        second_keywords_str = ", ".join(second_keywords)
+        second_keywords_str = "- 在保证句子流畅的前提下，可以在每个例句中尝试融入若干以下词汇（"+second_keywords_str+"），不限制每句融入几个，也不强制融入，但必须以句子自然流畅为前提。"
 
     vocab_level = config.get("vocab_level", DEFAULT_CONFIG["vocab_level"])
     learning_goal = config.get("learning_goal", DEFAULT_CONFIG["learning_goal"])
