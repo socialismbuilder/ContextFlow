@@ -487,7 +487,7 @@ class ConfigDialog(QDialog):
                 difficulty_level=test_config["difficulty_level"],
                 sentence_length_desc=test_config["sentence_length_desc"],
                 language=test_config["learning_language"],
-                second_keywords="strand,exasperated,grudgingly,guerrilla"
+                second_keywords="strand,exasperated,grudgingly,guerrilla,parish,extent,casino,carousel,hypocritical,hunch"
 
             )
         except Exception as e:

@@ -30,7 +30,8 @@ DEFAULT_PROMPT_TEMPLATE = '''
 - 绝对禁止将关键词用作前后缀来构成一个不同的词汇，或使用与关键词同根但意义完全不同的衍生词。
 （例如，给出关键词book,例句不能使用booking;给出king，例句不能使用kingdom）
 - 语境应尽量与学习目标 ({learning_goal}) 相关，或者为通用场景。
-- 每个例句必须包含关键词 ‘{world}’。在保证句子流畅的前提下，可以在例句中尝试融入以下第二关键词（随机选取的10难度较大词汇：{second_keywords}），但必须保证例句自然流畅，不强制融入。
+- 每个例句必须包含关键词 ‘{world}’。
+- 在保证句子流畅的前提下，可以在每个例句中尝试融入若干以下词汇（{second_keywords}），不限制每句融入几个，也不强制融入，但必须以句子自然流畅为前提。
 - 5个例句应尽量全面的覆盖关键词的各种用法和含义。
 
 输出格式要求：
@@ -280,8 +281,8 @@ def generate_ai_sentence(config, keyword,prompt = None):
         language = learning_language,
         second_keywords=second_keywords_str
     )
-    print("格式化提示词")
-    print(second_keywords_str)
+    #print("格式化提示词")
+    #print(second_keywords_str)
 
     try:
         response = get_api_response(config,formatted_prompt)
