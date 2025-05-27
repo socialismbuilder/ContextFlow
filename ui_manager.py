@@ -486,7 +486,9 @@ class ConfigDialog(QDialog):
                 learning_goal=test_config["learning_goal"],
                 difficulty_level=test_config["difficulty_level"],
                 sentence_length_desc=test_config["sentence_length_desc"],
-                language=test_config["learning_language"]
+                language=test_config["learning_language"],
+                second_keywords="strand,exasperated,grudgingly,guerrilla"
+
             )
         except Exception as e:
             self.test_result_edit.setText(f"提示词格式化错误: {str(e)}")
@@ -498,7 +500,8 @@ class ConfigDialog(QDialog):
         # 如果是查看提示词模式
         if test_mode == "查看提示词":
             self.test_result_edit.setText(formatted_prompt)
-
+            return
+        
         # 如果是生成例句模式，需要检查API配置
         if not test_config["api_url"] or not test_config["api_key"] or not test_config["model_name"]:
             self.test_result_edit.setText("错误: 请先在基本设置中配置API信息（URL、密钥和模型名称）")

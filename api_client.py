@@ -5,11 +5,15 @@ import concurrent.futures
 import traceback
 import typing # Add typing for Optional
 import re
+import random
 from .config_manager import get_config
+import html
+top_difficulty_keywords = []
 # Configuration details are dynamically loaded from user settings via config_manager
 
 # 默认提示词模板 - 现在从配置中读取
 DEFAULT_PROMPT_TEMPLATE = '''
+你是一个学习插件的例句生成助手
 请为{language}学习者生成5个包含关键词 ‘{world}’ 的{language}例句，并附带中文翻译。
 
 学习者信息：
@@ -26,10 +30,8 @@ DEFAULT_PROMPT_TEMPLATE = '''
 - 绝对禁止将关键词用作前后缀来构成一个不同的词汇，或使用与关键词同根但意义完全不同的衍生词。
 （例如，给出关键词book,例句不能使用booking;给出king，例句不能使用kingdom）
 - 语境应尽量与学习目标 ({learning_goal}) 相关，或者为通用场景。
-- 每个例句必须包含关键词 ‘{world}’。
+- 每个例句必须包含关键词 ‘{world}’。在保证句子流畅的前提下，可以在例句中尝试融入以下第二关键词（随机选取的10难度较大词汇：{second_keywords}），但必须保证例句自然流畅，不强制融入。
 - 5个例句应尽量全面的覆盖关键词的各种用法和含义。
-
-
 
 输出格式要求：
 
@@ -106,6 +108,20 @@ def get_prompts(config):
         prompt = custom_prompts.get(prompt_name,DEFAULT_PROMPT_TEMPLATE + DEFAULT_FORMAT_NORMAL)
     return prompt
 
+def clean_html(raw_string):
+    """
+    清洗 HTML 内容，包括：
+    1. 移除所有 HTML 标签
+    2. 移除方括号内容（如 [sound:...]）
+    3. 解码 HTML 实体（如 &nbsp; -> 空格）
+    4. 去除首尾空格
+    """
+    no_html = re.sub(r'<.*?>', '', raw_string)
+    no_sound = re.sub(r'\[.*?\]', '', no_html)
+    decoded = html.unescape(no_sound)
+    cleaned = decoded.strip()
+    return cleaned
+
 # 新增难度排名前100关键词的函数
 def get_top_difficulty_keywords():
     """返回学过的单词中难度排名前100的关键词列表（难度根据容易度因子逆序计算）"""
@@ -148,7 +164,6 @@ def get_top_difficulty_keywords():
         # 按难度降序排序（难度越高越靠前），取前100个
         difficulty_keywords.sort(reverse=True, key=lambda x: x[0])
         top_keywords = [kw for (diff, kw) in difficulty_keywords[:100]]
-        print(top_keywords)
         return top_keywords
 
     except Exception as e:
@@ -235,6 +250,15 @@ def generate_ai_sentence(config, keyword,prompt = None):
     同步调用AI接口生成包含关键词的例句。
     直接返回例句对列表（[[英文, 中文], ...]）或在出错时抛出异常。
     """
+    # 初始化难度关键词列表（全局变量）
+    global top_difficulty_keywords
+    if not top_difficulty_keywords:  # 列表为空时获取最新数据
+        top_difficulty_keywords = get_top_difficulty_keywords()
+    
+    # 随机选取10个作为第二关键词（不足10个则全选）
+    second_keywords = random.sample(top_difficulty_keywords, 10) if len(top_difficulty_keywords)>=10 else top_difficulty_keywords
+    # 转换为逗号分隔的字符串格式
+    second_keywords_str = ", ".join(second_keywords)
     # Merge default config with provided config if necessary, or just use provided
 
     vocab_level = config.get("vocab_level", DEFAULT_CONFIG["vocab_level"])
@@ -253,8 +277,11 @@ def generate_ai_sentence(config, keyword,prompt = None):
         learning_goal=learning_goal,
         difficulty_level=difficulty_level,
         sentence_length_desc=sentence_length_desc,
-        language = learning_language
+        language = learning_language,
+        second_keywords=second_keywords_str
     )
+    print("格式化提示词")
+    print(second_keywords_str)
 
     try:
         response = get_api_response(config,formatted_prompt)
