@@ -1,119 +1,106 @@
-import aqt
-from PyQt6.QtWidgets import QTextEdit, QVBoxLayout, QWidget, QScrollArea, QSizePolicy
-# 如果您使用 PyQt5，请取消注释下一行并注释掉上一行
-# from PyQt5.QtWidgets import QTextEdit, QVBoxLayout, QWidget, QScrollArea, QSizePolicy
-from aqt import mw
+from aqt import gui_hooks
 from aqt.stats import NewDeckStats
+from aqt.qt import (
+    QTextEdit,
+    QVBoxLayout,
+    QHBoxLayout, # 可能需要
+    QWidget,
+    QTabWidget,  # 导入 QTabWidget
+    QSizePolicy,
+    QScrollArea, # 如果原生内容或自定义内容可能溢出，需要滚动区域
+    Qt # 用于 Qt.Orientation 等
+)
 from aqt.webview import AnkiWebView # StatsWebView 继承自 AnkiWebView
 
-# from aqt import gui_hooks # 您已声明这部分由您处理
-
-# 函数签名保持不变
 def add_stats(statsdialog: NewDeckStats) -> None:
     """
-    给 Anki 的新版统计对话框添加一个测试用的空统计框。
-    目标是让这个框与 WebView 统计图表共存。
+    给 Anki 的新版统计对话框添加选项卡，一个显示原生统计，一个显示自定义统计。
     """
-    print(f"--- add_stats (v4): 正在尝试给统计界面添加测试框 (Anki 版本: {aqt.appVersion})... ---")
-    print(f"传入的 statsdialog 类型: {type(statsdialog)}")
+    print(f"--- add_stats (Tabbed Interface): 正在尝试创建选项卡界面... ---")
 
-    # 1. 创建 QTextEdit 控件
-    test_box = QTextEdit()
-    test_box.setReadOnly(True)
-    test_box.setPlaceholderText(
-        "这是一个用于测试的统计框 (Qt Widget)。\n"
-        "目标是显示在 WebView 统计的下方。"
-    )
-    test_box.setMinimumHeight(80)
-    test_box.setMaximumHeight(150)
-    # test_box.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed) # 保持这个策略
-    # 修正：对于QVBoxLayout中的项目，通常使用 Expanding, Preferred/Fixed/Minimum
-    test_box.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+    # 1. 创建 QTabWidget
+    tab_widget = QTabWidget(statsdialog) # 将 statsdialog 作为父对象
+    tab_widget.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
 
+    # 2. 准备原生统计内容的容器
+    # 我们需要将 statsdialog 原有的所有内容（主要是 WebView）移动到一个新的 QWidget 中
+    original_stats_container = QWidget()
+    original_stats_layout = QVBoxLayout(original_stats_container)
+    original_stats_layout.setContentsMargins(0, 0, 0, 0) # 移除内边距，让内容更紧凑
 
-    test_box.setStyleSheet(
-        "QTextEdit {"
-        "  border: 2px solid #17a2b8;"  # 青色边框
-        "  padding: 8px;"
-        "  background-color: #e8f7f9;" # 浅青色背景
-        "  font-family: sans-serif;"
-        "  color: #333;"
-        "}"
-    )
-
-    # 2. 分析和修改 statsdialog 的布局
+    # 遍历 statsdialog 的主布局，将所有现有控件移动到 original_stats_container
     main_dialog_layout = statsdialog.layout()
-
     if not main_dialog_layout:
-        print("错误：statsdialog.layout() 返回 None。无法继续。")
+        print("错误：statsdialog.layout() 返回 None。无法创建选项卡界面。")
         return
 
-    print(f"statsdialog 的主布局类型: {type(main_dialog_layout).__name__}")
-    print(f"主布局中的项目数量 (之前): {main_dialog_layout.count()}")
-    
-    stats_webview_widget = None
-    # 查找 StatsWebView 实例及其在布局中的索引
-    webview_layout_index = -1 # 用于 setStretchFactor(index, stretch)
-    
+    # 临时存储要移动的控件
+    widgets_to_move = []
     for i in range(main_dialog_layout.count()):
         item = main_dialog_layout.itemAt(i)
         if item and item.widget():
-            widget_in_layout = item.widget()
-            print(f"  主布局中的项目 {i}: {getattr(widget_in_layout, 'objectName', 'N/A')()} (类型: {type(widget_in_layout).__name__})")
-            if isinstance(widget_in_layout, AnkiWebView) or widget_in_layout.objectName() == 'web':
-                stats_webview_widget = widget_in_layout
-                webview_layout_index = i # 保存索引
-                print(f"    找到了 StatsWebView (或名为 'web' 的 AnkiWebView): '{stats_webview_widget.objectName()}' at index {webview_layout_index}")
-                # 通常只有一个主要的 StatsWebView，但我们继续循环以打印所有项目
-    
-    # 如果通过布局迭代未找到，尝试直接访问（以防万一）
-    if not stats_webview_widget:
-        print("未在主布局中直接找到 StatsWebView。尝试通过 statsdialog.children() 或 statsdialog.web 查找...")
-        if hasattr(statsdialog, 'web') and isinstance(statsdialog.web, AnkiWebView):
-             stats_webview_widget = statsdialog.web
-             print(f"通过 statsdialog.web 找到了 StatsWebView: '{stats_webview_widget.objectName()}'")
-             # 如果这样找到，我们还需要在布局中找到它的索引
-             for i in range(main_dialog_layout.count()):
-                 item = main_dialog_layout.itemAt(i)
-                 if item and item.widget() == stats_webview_widget:
-                     webview_layout_index = i
-                     print(f"    并确认其在布局中的索引为 {webview_layout_index}")
-                     break
-        # 进一步的遍历查找 (如果需要)
-        # ...
+            widgets_to_move.append(item.widget())
 
-    if stats_webview_widget:
-        print("已定位 StatsWebView 实例。")
-        if isinstance(main_dialog_layout, QVBoxLayout):
-            print("主布局是 QVBoxLayout。将 test_box 添加到布局末尾。")
-            
-            main_dialog_layout.addWidget(test_box)
-            test_box_layout_index = main_dialog_layout.indexOf(test_box) # 获取新添加的 test_box 的索引
-            print(f"test_box 已添加到主 QVBoxLayout 的末尾，索引为 {test_box_layout_index}。")
+    # 从主布局中移除所有控件
+    # 注意：从布局中移除控件后，控件的父对象不会自动改变，但它不再由该布局管理
+    for widget in widgets_to_move:
+        main_dialog_layout.removeWidget(widget)
+        # 确保控件没有父布局，以便可以添加到新的布局中
+        # widget.setParent(None) # 通常不需要显式调用，addWidget 会处理
 
-            if webview_layout_index != -1 and test_box_layout_index != -1:
-                # 正确的 setStretchFactor 调用方式是 (index, stretch_factor)
-                main_dialog_layout.setStretch(webview_layout_index, 5) # 给 WebView 较大的拉伸因子
-                main_dialog_layout.setStretch(test_box_layout_index, 1) # 给 test_box 较小的拉伸因子
-                print(f"已为索引 {webview_layout_index} (WebView) 和索引 {test_box_layout_index} (test_box) 设置拉伸因子。")
-                
-                # 确保 WebView 的大小策略允许它扩展
-                stats_webview_widget.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+    # 将这些控件添加到新的原生统计容器中
+    for widget in widgets_to_move:
+        original_stats_layout.addWidget(widget)
+        print(f"  移动原生控件: {getattr(widget, 'objectName', 'N/A')()} (类型: {type(widget).__name__})")
 
-            else:
-                print("警告：未能确定 WebView 或 test_box 在布局中的索引以设置拉伸因子。")
-        else:
-            print(f"警告：主布局不是 QVBoxLayout (类型: {type(main_dialog_layout).__name__})。")
-            print("将 test_box 添加到此布局可能产生意外结果。尝试直接添加...")
-            main_dialog_layout.addWidget(test_box)
-    else:
-        print("错误：未能定位 StatsWebView 实例。无法智能地添加 test_box。")
-        print("尝试将 test_box 添加到主布局的末尾作为备用方案...")
-        if main_dialog_layout: # 再次检查以防万一
-            main_dialog_layout.addWidget(test_box)
+    # 3. 准备自定义统计内容的容器
+    my_custom_stats_container = QWidget()
+    my_custom_stats_layout = QVBoxLayout(my_custom_stats_container)
+    my_custom_stats_layout.setContentsMargins(10, 10, 10, 10) # 给自定义内容一些边距
 
-    print(f"主布局中的项目数量 (之后): {main_dialog_layout.count()}")
-    print("--- add_stats (v4): 完成尝试。请检查界面。 ---")
+    # 创建你的自定义统计框
+    test_box = QTextEdit()
+    test_box.setReadOnly(True)
+    test_box.setPlaceholderText(
+        "这是我的自定义统计内容！\n"
+        "我可以完全控制这个选项卡中的所有 Qt 控件和布局。\n"
+        "例如，我可以添加图表、表格、按钮等。"
+    )
+    test_box.setMinimumHeight(200)
+    test_box.setStyleSheet(
+        "QTextEdit {"
+        "  border: 2px dashed #007bff;"  # 蓝色虚线边框
+        "  padding: 15px;"
+        "  background-color: #e0f7fa;" # 浅蓝色背景
+        "  font-family: 'Segoe UI', sans-serif;"
+        "  color: #212529;"
+        "  border-radius: 5px;"
+        "}"
+    )
+    test_box.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+
+    # 将自定义统计框添加到自定义容器的布局中
+    my_custom_stats_layout.addWidget(test_box)
+
+    # 你可以在这里添加更多自定义控件
+    # my_custom_stats_layout.addWidget(QPushButton("我的自定义按钮"))
+    # my_custom_stats_layout.addWidget(QLabel("更多信息..."))
+
+    # 4. 将选项卡添加到 QTabWidget
+    tab_widget.addTab(original_stats_container, "Anki 统计")
+    tab_widget.addTab(my_custom_stats_container, "我的统计")
+
+    # 5. 清空 statsdialog 的主布局（如果之前没有清空）并添加 QTabWidget
+    # 确保主布局是空的，然后添加 tab_widget
+    # 之前已经移除了所有控件，现在直接添加 tab_widget
+    main_dialog_layout.addWidget(tab_widget)
+    print("QTabWidget 已添加到 statsdialog 的主布局。")
+
+    # 确保 tab_widget 占据所有可用空间
+    main_dialog_layout.setStretch(main_dialog_layout.indexOf(tab_widget), 1)
+
+    print("--- add_stats (Tabbed Interface): 选项卡界面创建完成。 ---")
+
 
     # === Anki 自定义统计界面控件添加指南 ===
 #
