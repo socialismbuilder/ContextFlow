@@ -111,6 +111,12 @@ def get_deck_study_stats_for_date_range(deck_name: str, start_date: date, end_da
 def refresh_stats_content(container, deck_name):
     """刷新统计内容"""
     print(f"--- 刷新统计内容，牌组: {deck_name} ---")
+    
+    # 检查容器和WebView是否有效
+    if not container or not hasattr(container, 'stats_webview') or not container.stats_webview:
+        print("刷新终止: 统计组件已被销毁")
+        return
+        
     stats_webview = container.stats_webview
     # 设置加载中状态
     stats_webview.setHtml('<div style="padding:20px;text-align:center;">数据加载中...</div>')
@@ -229,27 +235,43 @@ def add_stats(statsdialog: NewDeckStats) -> None:
     def check_deck_changed():
         nonlocal last_deck_name
         try:
-            # 检查WebView是否仍然有效
-            if not my_custom_stats_container.stats_webview:
-                print("定时检查终止: WebView已被销毁")
+            # 严格检查所有相关对象是否有效
+            if (not my_custom_stats_container or 
+                not hasattr(my_custom_stats_container, 'stats_webview') or 
+                not my_custom_stats_container.stats_webview):
+                print("定时检查终止: 统计组件已被销毁")
                 return
             
+            # 获取当前牌组前再次检查对象有效性
+            if not mw or not mw.col:
+                print("定时检查终止: Anki主窗口不可用")
+                return
+                
             current_deck = mw.col.decks.current()
             new_deck_name = current_deck['name'] if current_deck else '未知牌组'
+            
             if new_deck_name != last_deck_name:
                 last_deck_name = new_deck_name
                 print(f"定时检查检测到牌组变化: {new_deck_name}")
-                on_deck_changed()
+                
+                # 执行刷新前最终确认对象有效性
+                if (my_custom_stats_container and 
+                    hasattr(my_custom_stats_container, 'stats_webview') and 
+                    my_custom_stats_container.stats_webview):
+                    on_deck_changed()
+                
         except Exception as e:
             print(f"定时检查出错: {e}")
-            # 如果出现对象销毁错误，停止后续检查
-            if "has been deleted" in str(e):
-                print("定时检查终止: 相关对象已被销毁")
-                return
-        finally:
-            # 仅在对象有效时继续检查
-            if my_custom_stats_container and my_custom_stats_container.stats_webview:
-                mw.progress.single_shot(1000, check_deck_changed, my_custom_stats_container)
+            # 任何异常都停止检查
+            print("定时检查终止: 发生异常")
+            return
+            
+        # 仅在所有检查通过后安排下次检查
+        if (mw and mw.col and 
+            my_custom_stats_container and 
+            hasattr(my_custom_stats_container, 'stats_webview') and 
+            my_custom_stats_container.stats_webview):
+            mw.progress.single_shot(1000, check_deck_changed, my_custom_stats_container)
     
     # 首次启动定时检查
     mw.progress.single_shot(1000, check_deck_changed, my_custom_stats_container)
