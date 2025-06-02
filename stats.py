@@ -16,21 +16,19 @@ from aqt.qt import (
 from aqt.webview import AnkiWebView
 from datetime import datetime, date, timedelta
 # --- 新增函数：用于创建自定义统计选项卡的内容 ---
-def create_custom_stats_tab_content() -> QWidget:
+def create_custom_stats_tab_content(deck_name: str) -> QWidget:
     """
     创建并返回包含所有自定义统计内容的 QWidget。
     所有自定义统计界面的修改都应在此函数内部进行。
     """
     print("--- create_custom_stats_tab_content: 正在构建自定义统计内容... ---")
+    print(f"当前牌组名称: {deck_name}")
 
     # 创建自定义统计内容的容器
     my_custom_stats_container = QWidget()
     # 使用 QVBoxLayout 作为主布局，垂直排列内容
     my_custom_stats_layout = QVBoxLayout(my_custom_stats_container)
     my_custom_stats_layout.setContentsMargins(15, 15, 15, 15) # 增加一些边距
-
-    # 只保留统计数据
-    deck_name = "所有卡片::英语::美国当代英语语料库"
     end_date = date.today()
     start_date = end_date - timedelta(days=9)
     
@@ -55,7 +53,7 @@ def create_custom_stats_tab_content() -> QWidget:
     html_content += "<tr><th>日期</th><th>学习卡片数</th><th>总学习时间(小时)</th><th>平均学习时间(秒/卡片)</th></tr>"
     
     # 获取每日统计数据
-    for i in range(10):
+    for i in range(30):
         day_date = end_date - timedelta(days=i)
         cards, study_time = get_deck_study_stats_for_date_range(deck_name, day_date, day_date)
         
@@ -107,10 +105,10 @@ def get_deck_study_stats_for_date_range(deck_name: str, start_date: date, end_da
         deck_id = deck['id']
         
         # 2. 构建时间范围的时间戳（毫秒）
-        # 开始日期：当天的开始（00:00:00）
-        start_dt = datetime(start_date.year, start_date.month, start_date.day)
-        # 结束日期：当天的结束（23:59:59.999）
-        end_dt = datetime(end_date.year, end_date.month, end_date.day, 23, 59, 59, 999999)
+        # 开始日期：当天的凌晨4点（04:00:00）
+        start_dt = datetime(start_date.year, start_date.month, start_date.day, 4, 0, 0)
+        # 结束日期：结束日期下一天的凌晨4点减去1微秒（即结束日期那一天的最后一刻是第二天的03:59:59.999999）
+        end_dt = datetime(end_date.year, end_date.month, end_date.day, 4, 0, 0) + timedelta(days=1) - timedelta(microseconds=1)
         
         start_timestamp = int(start_dt.timestamp() * 1000)
         end_timestamp = int(end_dt.timestamp() * 1000)
@@ -172,8 +170,35 @@ def add_stats(statsdialog: NewDeckStats) -> None:
         original_stats_layout.addWidget(widget)
         print(f"  移动原生控件: {getattr(widget, 'objectName', 'N/A')()} (类型: {type(widget).__name__})")
 
-    # 3. 调用新函数来获取自定义统计内容的容器
-    my_custom_stats_container = create_custom_stats_tab_content()
+    # 3. 调用新函数来获取自定义统计内容的容器，传入当前牌组名称
+    # 尝试获取当前牌组名称
+    try:
+        # 打印statsdialog对象的所有属性
+        print("=== statsdialog 对象属性 ===")
+        for attr in dir(statsdialog):
+            if not attr.startswith('__'):  # 过滤掉内置属性
+                try:
+                    value = getattr(statsdialog, attr)
+                    print(f"{attr}: {type(value)}")
+                except Exception as e:
+                    print(f"{attr}: [无法获取值]")
+        
+        # 尝试从不同位置获取牌组名称
+        if hasattr(statsdialog, '_deck') and isinstance(statsdialog._deck, dict):
+            current_deck_name = statsdialog._deck.get('name', '未知牌组')
+        elif hasattr(statsdialog, 'deck') and isinstance(statsdialog.deck, dict):
+            current_deck_name = statsdialog.deck.get('name', '未知牌组')
+        else:
+            # 作为后备方案，获取当前选中的牌组
+            current_deck = mw.col.decks.current()
+            current_deck_name = current_deck['name'] if current_deck else '未知牌组'
+            
+        print(f"当前牌组名称: {current_deck_name}")
+    except Exception as e:
+        print(f"获取牌组名称时出错: {e}")
+        current_deck_name = '未知牌组'
+        
+    my_custom_stats_container = create_custom_stats_tab_content(current_deck_name)
 
     # 4. 将选项卡添加到 QTabWidget
     tab_widget.addTab(original_stats_container, "Anki 统计")
