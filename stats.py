@@ -143,163 +143,18 @@ def refresh_stats_content(container, deck_name):
     time_data.reverse()
     avg_time_data.reverse()
     
-    # 生成HTML内容
-    html_content = f"""
-    <!DOCTYPE html>
-    <html>
-    <head>
-        <style>
-            .chart-container {{
-                margin: 20px 0;
-                padding: 15px;
-                background: white;
-                border-radius: 8px;
-                box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-            }}
-            h3 {{
-                margin-top: 0;
-                color: #333;
-            }}
-            .loading {{
-                text-align: center;
-                padding: 20px;
-                color: #666;
-            }}
-        </style>
-    </head>
-    <body>
-        <h3>{deck_name} - 最近30天学习统计</h3>
-        
-        <div class="chart-container">
-            <div class="loading">图表加载中...</div>
-            <canvas id="cardsChart"></canvas>
-        </div>
-        
-        <div class="chart-container">
-            <div class="loading">图表加载中...</div>
-            <canvas id="timeChart"></canvas>
-        </div>
-        
-        <div class="chart-container">
-            <div class="loading">图表加载中...</div>
-            <canvas id="avgTimeChart"></canvas>
-        </div>
-        
-        <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-        <script>
-            function initCharts() {{
-                const maxRetries = 10;
-                let retryCount = 0;
-                
-                function tryInit() {{
-                    if (typeof Chart === 'undefined') {{
-                        if (retryCount < maxRetries) {{
-                            retryCount++;
-                            setTimeout(tryInit, 100);
-                            return;
-                        }}
-                        // 加载失败处理
-                        document.querySelectorAll('.loading').forEach(el => {{
-                            el.textContent = '图表库加载失败，请检查网络连接';
-                            el.style.color = 'red';
-                        }});
-                        return;
-                    }}
-                    
-                    // 隐藏加载提示
-                    document.querySelectorAll('.loading').forEach(el => el.style.display = 'none');
-                    
-                    // 学习卡片数图表
-                    new Chart(
-                        document.getElementById('cardsChart'),
-                        {{
-                            type: 'line',
-                            data: {{
-                                labels: {dates},
-                                datasets: [{{
-                                    label: '学习卡片数',
-                                    data: {cards_data},
-                                    borderColor: 'rgb(75, 192, 192)',
-                                    tension: 0.1,
-                                    fill: false
-                                }}]
-                            }},
-                            options: {{
-                                responsive: true,
-                                plugins: {{
-                                    title: {{
-                                        display: true,
-                                        text: '每日学习卡片数'
-                                    }}
-                                }}
-                            }}
-                        }}
-                    );
-                    
-                    // 总学习时间图表
-                    new Chart(
-                        document.getElementById('timeChart'),
-                        {{
-                            type: 'bar',
-                            data: {{
-                                labels: {dates},
-                                datasets: [{{
-                                    label: '学习时间(小时)',
-                                    data: {time_data},
-                                    backgroundColor: 'rgba(54, 162, 235, 0.5)',
-                                    borderColor: 'rgb(54, 162, 235)',
-                                    borderWidth: 1
-                                }}]
-                            }},
-                            options: {{
-                                responsive: true,
-                                plugins: {{
-                                    title: {{
-                                        display: true,
-                                        text: '每日学习时间(小时)'
-                                    }}
-                                }}
-                            }}
-                        }}
-                    );
-                    
-                    // 平均学习时间图表
-                    new Chart(
-                        document.getElementById('avgTimeChart'),
-                        {{
-                            type: 'line',
-                            data: {{
-                                labels: {dates},
-                                datasets: [{{
-                                    label: '平均学习时间(秒/卡片)',
-                                    data: {avg_time_data},
-                                    borderColor: 'rgb(255, 99, 132)',
-                                    backgroundColor: 'rgba(255, 99, 132, 0.5)',
-                                    tension: 0.1,
-                                    fill: true
-                                }}]
-                            }},
-                            options: {{
-                                responsive: true,
-                                plugins: {{
-                                    title: {{
-                                        display: true,
-                                        text: '卡片平均学习时间(秒)'
-                                    }}
-                                }}
-                            }}
-                        }}
-                    );
-                }}
-                tryInit();
-            }}
-            
-            // 页面加载完成后初始化图表
-            document.addEventListener('DOMContentLoaded', initCharts);
-        </script>
-    </body>
-    </html>
-    """
+    # 从模板文件读取HTML内容（使用插件根目录路径）
+    import os
+    template_path = os.path.join(os.path.dirname(__file__), 'templates', 'stats.html')
+    with open(template_path, 'r', encoding='utf-8') as f:
+        html_content = f.read()
+    
+    # 替换模板变量
+    html_content = html_content.replace('{deck_name}', deck_name)
+    html_content = html_content.replace('{dates}', str(dates))
+    html_content = html_content.replace('{cards_data}', str(cards_data))
+    html_content = html_content.replace('{time_data}', str(time_data))
+    html_content = html_content.replace('{avg_time_data}', str(avg_time_data))
     
     # 设置HTML内容
     stats_webview.setHtml(html_content)
