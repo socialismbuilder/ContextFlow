@@ -111,6 +111,8 @@ def refresh_stats_content(container, deck_name):
     """刷新统计内容"""
     print(f"--- 刷新统计内容，牌组: {deck_name} ---")
     stats_webview = container.stats_webview
+    # 设置加载中状态
+    stats_webview.setHtml('<div style="padding:20px;text-align:center;">数据加载中...</div>')
     end_date = date.today()
     start_date = end_date - timedelta(days=29)  # 获取30天数据
     
@@ -185,96 +187,110 @@ def refresh_stats_content(container, deck_name):
         <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
         <script>
             function initCharts() {{
-                // 确保Chart对象存在
-                if (typeof Chart === 'undefined') {{
-                    setTimeout(initCharts, 100);
-                    return;
+                const maxRetries = 10;
+                let retryCount = 0;
+                
+                function tryInit() {{
+                    if (typeof Chart === 'undefined') {{
+                        if (retryCount < maxRetries) {{
+                            retryCount++;
+                            setTimeout(tryInit, 100);
+                            return;
+                        }}
+                        // 加载失败处理
+                        document.querySelectorAll('.loading').forEach(el => {{
+                            el.textContent = '图表库加载失败，请检查网络连接';
+                            el.style.color = 'red';
+                        }});
+                        return;
+                    }}
+                    
+                    // 隐藏加载提示
+                    document.querySelectorAll('.loading').forEach(el => el.style.display = 'none');
+                    
+                    // 学习卡片数图表
+                    new Chart(
+                        document.getElementById('cardsChart'),
+                        {{
+                            type: 'line',
+                            data: {{
+                                labels: {dates},
+                                datasets: [{{
+                                    label: '学习卡片数',
+                                    data: {cards_data},
+                                    borderColor: 'rgb(75, 192, 192)',
+                                    tension: 0.1,
+                                    fill: false
+                                }}]
+                            }},
+                            options: {{
+                                responsive: true,
+                                plugins: {{
+                                    title: {{
+                                        display: true,
+                                        text: '每日学习卡片数'
+                                    }}
+                                }}
+                            }}
+                        }}
+                    );
+                    
+                    // 总学习时间图表
+                    new Chart(
+                        document.getElementById('timeChart'),
+                        {{
+                            type: 'bar',
+                            data: {{
+                                labels: {dates},
+                                datasets: [{{
+                                    label: '学习时间(小时)',
+                                    data: {time_data},
+                                    backgroundColor: 'rgba(54, 162, 235, 0.5)',
+                                    borderColor: 'rgb(54, 162, 235)',
+                                    borderWidth: 1
+                                }}]
+                            }},
+                            options: {{
+                                responsive: true,
+                                plugins: {{
+                                    title: {{
+                                        display: true,
+                                        text: '每日学习时间(小时)'
+                                    }}
+                                }}
+                            }}
+                        }}
+                    );
+                    
+                    // 平均学习时间图表
+                    new Chart(
+                        document.getElementById('avgTimeChart'),
+                        {{
+                            type: 'line',
+                            data: {{
+                                labels: {dates},
+                                datasets: [{{
+                                    label: '平均学习时间(秒/卡片)',
+                                    data: {avg_time_data},
+                                    borderColor: 'rgb(255, 99, 132)',
+                                    backgroundColor: 'rgba(255, 99, 132, 0.5)',
+                                    tension: 0.1,
+                                    fill: true
+                                }}]
+                            }},
+                            options: {{
+                                responsive: true,
+                                plugins: {{
+                                    title: {{
+                                        display: true,
+                                        text: '卡片平均学习时间(秒)'
+                                    }}
+                                }}
+                            }}
+                        }}
+                    );
                 }}
-                
-                // 隐藏加载提示
-                document.querySelectorAll('.loading').forEach(el => el.style.display = 'none');
-                
-                // 学习卡片数图表
-                new Chart(
-                    document.getElementById('cardsChart'),
-                    {{
-                        type: 'line',
-                        data: {{
-                            labels: {dates},
-                            datasets: [{{
-                                label: '学习卡片数',
-                                data: {cards_data},
-                                borderColor: 'rgb(75, 192, 192)',
-                                tension: 0.1,
-                                fill: false
-                            }}]
-                        }},
-                        options: {{
-                            responsive: true,
-                            plugins: {{
-                                title: {{
-                                    display: true,
-                                    text: '每日学习卡片数'
-                                }}
-                            }}
-                        }}
-                    }}
-                );
-                
-                // 总学习时间图表
-                new Chart(
-                    document.getElementById('timeChart'),
-                    {{
-                        type: 'bar',
-                        data: {{
-                            labels: {dates},
-                            datasets: [{{
-                                label: '学习时间(小时)',
-                                data: {time_data},
-                                backgroundColor: 'rgba(54, 162, 235, 0.5)',
-                                borderColor: 'rgb(54, 162, 235)',
-                                borderWidth: 1
-                            }}]
-                        }},
-                        options: {{
-                            responsive: true,
-                            plugins: {{
-                                title: {{
-                                    display: true,
-                                    text: '每日学习时间(小时)'
-                                }}
-                            }}
-                        }}
-                    }}
-                );
-                
-                // 平均学习时间图表
-                new Chart(
-                    document.getElementById('avgTimeChart'),
-                    {{
-                        type: 'line',
-                        data: {{
-                            labels: {dates},
-                            datasets: [{{
-                                label: '平均学习时间(秒/卡片)',
-                                data: {avg_time_data},
-                                borderColor: 'rgb(255, 99, 132)',
-                                backgroundColor: 'rgba(255, 99, 132, 0.5)',
-                                tension: 0.1,
-                                fill: true
-                            }}]
-                        }},
-                        options: {{
-                            responsive: true,
-                            plugins: {{
-                                title: {{
-                                    display: true,
-                                    text: '卡片平均学习时间(秒)'
-                                }}
-                            }}
-                        }}
-                    }}
-                );
+                tryInit();
             }}
             
             // 页面加载完成后初始化图表
