@@ -92,6 +92,7 @@ def get_deck_study_stats_for_date_range(deck_name: str, start_date: date, end_da
                 SELECT id FROM cards WHERE did = {deck_id}
             ) AND id >= {start_timestamp}
             AND id <= {end_timestamp}
+            AND time > 1  -- 过滤学习时间小于0.1秒的记录
         """
         
         # 3. 执行查询
@@ -379,7 +380,7 @@ def add_stats(statsdialog: NewDeckStats) -> None:
     
     # 方法1: 使用Anki的hook系统
     print("\n注册牌组变化hook")
-    def on_deck_browser_did_render(deck_browser, _):
+    def on_deck_browser_did_render(deck_browser):
         try:
             on_deck_changed()
         except Exception as e:
