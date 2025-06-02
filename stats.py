@@ -215,16 +215,6 @@ def add_stats(statsdialog: NewDeckStats) -> None:
     main_dialog_layout.setStretch(main_dialog_layout.indexOf(tab_widget), 1)
 
     # 6. 连接牌组选择变化信号到刷新函数
-    # 调试输出statsdialog完整结构
-    print("\n=== statsdialog结构分析 ===")
-    print(f"statsdialog类型: {type(statsdialog)}")
-    print(f"statsdialog对象名: {statsdialog.objectName()}")
-    
-    # 输出所有子控件
-    print("\n子控件列表:")
-    children = statsdialog.findChildren(QWidget)
-    for i, child in enumerate(children):
-        print(f"{i}: {type(child).__name__} 对象名='{child.objectName()}'")
     
     # 定义刷新函数
     def on_deck_changed():
@@ -233,22 +223,17 @@ def add_stats(statsdialog: NewDeckStats) -> None:
         print(f"牌组已切换至: {deck_name}")
         refresh_stats_content(my_custom_stats_container, deck_name)
     
-    # 方法1: 使用Anki的hook系统
-    print("\n注册牌组变化hook")
-    def on_deck_browser_did_render(deck_browser):
-        try:
-            on_deck_changed()
-        except Exception as e:
-            print(f"hook回调出错: {e}")
-    
-    gui_hooks.deck_browser_did_render.append(on_deck_browser_did_render)
-    
-    # 方法2: 定时检查牌组变化 (使用single_shot避免内存泄漏)
-    print("\n设置安全的定时检查牌组变化")
+    # 定时检查牌组变化 (使用single_shot避免内存泄漏)
+    print("\n设置定时检查牌组变化机制")
     last_deck_name = current_deck_name
     def check_deck_changed():
         nonlocal last_deck_name
         try:
+            # 检查WebView是否仍然有效
+            if not my_custom_stats_container.stats_webview:
+                print("定时检查终止: WebView已被销毁")
+                return
+            
             current_deck = mw.col.decks.current()
             new_deck_name = current_deck['name'] if current_deck else '未知牌组'
             if new_deck_name != last_deck_name:
@@ -257,13 +242,18 @@ def add_stats(statsdialog: NewDeckStats) -> None:
                 on_deck_changed()
         except Exception as e:
             print(f"定时检查出错: {e}")
+            # 如果出现对象销毁错误，停止后续检查
+            if "has been deleted" in str(e):
+                print("定时检查终止: 相关对象已被销毁")
+                return
         finally:
-            # 使用single_shot并指定parent避免内存泄漏
-            mw.progress.single_shot(1000, check_deck_changed, my_custom_stats_container)
+            # 仅在对象有效时继续检查
+            if my_custom_stats_container and my_custom_stats_container.stats_webview:
+                mw.progress.single_shot(1000, check_deck_changed, my_custom_stats_container)
     
     # 首次启动定时检查
     mw.progress.single_shot(1000, check_deck_changed, my_custom_stats_container)
     
-    print("\n已设置安全的牌组变化检测机制 (hook + single_shot定时检查)")
+    print("\n已设置定时检查牌组变化机制")
 
     print("--- add_stats (Tabbed Interface): 选项卡界面创建完成。 ---")
