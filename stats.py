@@ -155,12 +155,18 @@ def refresh_stats_content(container, deck_name):
     with open(template_path, 'r', encoding='utf-8') as f:
         html_content = f.read()
     
+    # 读取chart.js文件内容
+    chart_js_path = os.path.join(os.path.dirname(__file__), 'chart.js')
+    with open(chart_js_path, 'r', encoding='utf-8') as f:
+        chart_js_content = f.read()
+    
     # 替换模板变量
     html_content = html_content.replace('{deck_name}', deck_name)
     html_content = html_content.replace('{dates}', str(dates))
     html_content = html_content.replace('{cards_data}', str(cards_data))
     html_content = html_content.replace('{time_data}', str(time_data))
     html_content = html_content.replace('{avg_time_data}', str(avg_time_data))
+    html_content = html_content.replace('{chart_js_content}', chart_js_content)
     
     # 设置HTML内容
     stats_webview.setHtml(html_content)

@@ -68,7 +68,10 @@
         </div>
     </div>
     
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script>
+        // 由stats.py注入的chart.js库内容
+        {chart_js_content}
+    </script>
     <script>
         function initCharts() {
             const maxRetries = 10;
