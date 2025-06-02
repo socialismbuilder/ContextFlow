@@ -30,24 +30,14 @@ def create_custom_stats_tab_content(deck_name: str) -> QWidget:
     my_custom_stats_layout = QVBoxLayout(my_custom_stats_container)
     my_custom_stats_layout.setContentsMargins(15, 15, 15, 15) # 增加一些边距
     
-    # 创建统计信息文本框
-    stats_text_edit = QTextEdit()
-    stats_text_edit.setReadOnly(True)
-    stats_text_edit.setStyleSheet(
-        "QTextEdit {"
-        "  padding: 10px;"
-        "  background-color: #f8f9fa;"
-        "  border: 1px solid #dee2e6;"
-        "  border-radius: 5px;"
-        "  color: #212529;"
-        "}"
-    )
-    stats_text_edit.setMinimumHeight(400)
-    my_custom_stats_layout.addWidget(stats_text_edit)
+    # 创建统计信息WebView
+    stats_webview = AnkiWebView()
+    stats_webview.setMinimumHeight(400)
+    my_custom_stats_layout.addWidget(stats_webview)
     
-    # 存储当前牌组名称和文本框引用以便刷新
+    # 存储当前牌组名称和WebView引用以便刷新
     my_custom_stats_container.deck_name = deck_name
-    my_custom_stats_container.stats_text_edit = stats_text_edit
+    my_custom_stats_container.stats_webview = stats_webview
     
     # 初始生成统计内容
     refresh_stats_content(my_custom_stats_container, deck_name)
@@ -120,14 +110,15 @@ def get_deck_study_stats_for_date_range(deck_name: str, start_date: date, end_da
 def refresh_stats_content(container, deck_name):
     """刷新统计内容"""
     print(f"--- 刷新统计内容，牌组: {deck_name} ---")
-    stats_text_edit = container.stats_text_edit
+    stats_webview = container.stats_webview
     end_date = date.today()
-    start_date = end_date - timedelta(days=9)
+    start_date = end_date - timedelta(days=29)  # 获取30天数据
     
-    # 获取并显示每日统计数据
-    html_content = "<h3>最近10天学习统计</h3>"
-    html_content += "<table border='1' style='border-collapse: collapse; width: 100%;'>"
-    html_content += "<tr><th>日期</th><th>学习卡片数</th><th>总学习时间(小时)</th><th>平均学习时间(秒/卡片)</th></tr>"
+    # 准备图表数据
+    dates = []
+    cards_data = []
+    time_data = []
+    avg_time_data = []
     
     # 获取每日统计数据
     for i in range(30):
@@ -136,17 +127,165 @@ def refresh_stats_content(container, deck_name):
         
         # 计算平均学习时间
         avg_time = study_time / cards if cards > 0 else 0
-        study_time = study_time/ 60  # 转换为分钟
+        study_time_hours = study_time / 3600  # 转换为小时
         
-        html_content += f"<tr><td>{day_date.strftime('%Y-%m-%d')}</td>"
-        html_content += f"<td style='text-align: center;'>{cards}</td>"
-        html_content += f"<td style='text-align: center;'>{study_time:.2f}</td>"
-        html_content += f"<td style='text-align: center;'>{avg_time:.2f}</td></tr>"
+        dates.append(day_date.strftime('%m-%d'))
+        cards_data.append(cards)
+        time_data.append(study_time_hours)
+        avg_time_data.append(avg_time)
     
-    html_content += "</table>"
+    # 反转数据，使日期从早到晚
+    dates.reverse()
+    cards_data.reverse()
+    time_data.reverse()
+    avg_time_data.reverse()
+    
+    # 生成HTML内容
+    html_content = f"""
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <style>
+            .chart-container {{
+                margin: 20px 0;
+                padding: 15px;
+                background: white;
+                border-radius: 8px;
+                box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            }}
+            h3 {{
+                margin-top: 0;
+                color: #333;
+            }}
+            .loading {{
+                text-align: center;
+                padding: 20px;
+                color: #666;
+            }}
+        </style>
+    </head>
+    <body>
+        <h3>{deck_name} - 最近30天学习统计</h3>
+        
+        <div class="chart-container">
+            <div class="loading">图表加载中...</div>
+            <canvas id="cardsChart"></canvas>
+        </div>
+        
+        <div class="chart-container">
+            <div class="loading">图表加载中...</div>
+            <canvas id="timeChart"></canvas>
+        </div>
+        
+        <div class="chart-container">
+            <div class="loading">图表加载中...</div>
+            <canvas id="avgTimeChart"></canvas>
+        </div>
+        
+        <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+        <script>
+            function initCharts() {{
+                // 确保Chart对象存在
+                if (typeof Chart === 'undefined') {{
+                    setTimeout(initCharts, 100);
+                    return;
+                }}
+                
+                // 隐藏加载提示
+                document.querySelectorAll('.loading').forEach(el => el.style.display = 'none');
+                
+                // 学习卡片数图表
+                new Chart(
+                    document.getElementById('cardsChart'),
+                    {{
+                        type: 'line',
+                        data: {{
+                            labels: {dates},
+                            datasets: [{{
+                                label: '学习卡片数',
+                                data: {cards_data},
+                                borderColor: 'rgb(75, 192, 192)',
+                                tension: 0.1,
+                                fill: false
+                            }}]
+                        }},
+                        options: {{
+                            responsive: true,
+                            plugins: {{
+                                title: {{
+                                    display: true,
+                                    text: '每日学习卡片数'
+                                }}
+                            }}
+                        }}
+                    }}
+                );
+                
+                // 总学习时间图表
+                new Chart(
+                    document.getElementById('timeChart'),
+                    {{
+                        type: 'bar',
+                        data: {{
+                            labels: {dates},
+                            datasets: [{{
+                                label: '学习时间(小时)',
+                                data: {time_data},
+                                backgroundColor: 'rgba(54, 162, 235, 0.5)',
+                                borderColor: 'rgb(54, 162, 235)',
+                                borderWidth: 1
+                            }}]
+                        }},
+                        options: {{
+                            responsive: true,
+                            plugins: {{
+                                title: {{
+                                    display: true,
+                                    text: '每日学习时间(小时)'
+                                }}
+                            }}
+                        }}
+                    }}
+                );
+                
+                // 平均学习时间图表
+                new Chart(
+                    document.getElementById('avgTimeChart'),
+                    {{
+                        type: 'line',
+                        data: {{
+                            labels: {dates},
+                            datasets: [{{
+                                label: '平均学习时间(秒/卡片)',
+                                data: {avg_time_data},
+                                borderColor: 'rgb(255, 99, 132)',
+                                backgroundColor: 'rgba(255, 99, 132, 0.5)',
+                                tension: 0.1,
+                                fill: true
+                            }}]
+                        }},
+                        options: {{
+                            responsive: true,
+                            plugins: {{
+                                title: {{
+                                    display: true,
+                                    text: '卡片平均学习时间(秒)'
+                                }}
+                            }}
+                        }}
+                    }}
+                );
+            }}
+            
+            // 页面加载完成后初始化图表
+            document.addEventListener('DOMContentLoaded', initCharts);
+        </script>
+    </body>
+    </html>
+    """
     
     # 设置HTML内容
-    stats_text_edit.setHtml(html_content)
+    stats_webview.setHtml(html_content)
 
 
 # --- 原始函数：保持函数签名不变 ---
