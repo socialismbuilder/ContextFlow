@@ -12,13 +12,14 @@
             gap: 20px;
         }
         .chart-container {
-            min-width: 400px;
+            width: 100%;
             max-width: 600px;
             margin: 0 auto 20px;
             padding: 15px;
             background: white;
             border-radius: 8px;
             box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            box-sizing: border-box;
         }
         h3 {
             margin-top: 0;
@@ -39,8 +40,8 @@
                 grid-template-columns: 1fr;
             }
             .chart-container {
-                min-width: unset;
                 width: 100%;
+                max-width: 100%;
             }
         }
     </style>
