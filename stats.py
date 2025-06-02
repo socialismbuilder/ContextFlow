@@ -29,8 +29,6 @@ def create_custom_stats_tab_content(deck_name: str) -> QWidget:
     # 使用 QVBoxLayout 作为主布局，垂直排列内容
     my_custom_stats_layout = QVBoxLayout(my_custom_stats_container)
     my_custom_stats_layout.setContentsMargins(15, 15, 15, 15) # 增加一些边距
-    end_date = date.today()
-    start_date = end_date - timedelta(days=9)
     
     # 创建统计信息文本框
     stats_text_edit = QTextEdit()
@@ -47,29 +45,12 @@ def create_custom_stats_tab_content(deck_name: str) -> QWidget:
     stats_text_edit.setMinimumHeight(400)
     my_custom_stats_layout.addWidget(stats_text_edit)
     
-    # 获取并显示每日统计数据
-    html_content = "<h3>最近10天学习统计</h3>"
-    html_content += "<table border='1' style='border-collapse: collapse; width: 100%;'>"
-    html_content += "<tr><th>日期</th><th>学习卡片数</th><th>总学习时间(小时)</th><th>平均学习时间(秒/卡片)</th></tr>"
+    # 存储当前牌组名称和文本框引用以便刷新
+    my_custom_stats_container.deck_name = deck_name
+    my_custom_stats_container.stats_text_edit = stats_text_edit
     
-    # 获取每日统计数据
-    for i in range(30):
-        day_date = end_date - timedelta(days=i)
-        cards, study_time = get_deck_study_stats_for_date_range(deck_name, day_date, day_date)
-        
-        # 计算平均学习时间
-        avg_time = study_time / cards if cards > 0 else 0
-        study_time = study_time/ 60  # 转换为分钟
-        
-        html_content += f"<tr><td>{day_date.strftime('%Y-%m-%d')}</td>"
-        html_content += f"<td style='text-align: center;'>{cards}</td>"
-        html_content += f"<td style='text-align: center;'>{study_time:.2f}</td>"
-        html_content += f"<td style='text-align: center;'>{avg_time:.2f}</td></tr>"
-    
-    html_content += "</table>"
-    
-    # 设置HTML内容
-    stats_text_edit.setHtml(html_content)
+    # 初始生成统计内容
+    refresh_stats_content(my_custom_stats_container, deck_name)
 
     print("--- create_custom_stats_tab_content: 自定义统计内容构建完成。 ---")
     return my_custom_stats_container
@@ -135,6 +116,38 @@ def get_deck_study_stats_for_date_range(deck_name: str, start_date: date, end_da
 
     return total_cards_reviewed, total_study_time_seconds
 
+# 刷新统计内容函数
+def refresh_stats_content(container, deck_name):
+    """刷新统计内容"""
+    print(f"--- 刷新统计内容，牌组: {deck_name} ---")
+    stats_text_edit = container.stats_text_edit
+    end_date = date.today()
+    start_date = end_date - timedelta(days=9)
+    
+    # 获取并显示每日统计数据
+    html_content = "<h3>最近10天学习统计</h3>"
+    html_content += "<table border='1' style='border-collapse: collapse; width: 100%;'>"
+    html_content += "<tr><th>日期</th><th>学习卡片数</th><th>总学习时间(小时)</th><th>平均学习时间(秒/卡片)</th></tr>"
+    
+    # 获取每日统计数据
+    for i in range(30):
+        day_date = end_date - timedelta(days=i)
+        cards, study_time = get_deck_study_stats_for_date_range(deck_name, day_date, day_date)
+        
+        # 计算平均学习时间
+        avg_time = study_time / cards if cards > 0 else 0
+        study_time = study_time/ 60  # 转换为分钟
+        
+        html_content += f"<tr><td>{day_date.strftime('%Y-%m-%d')}</td>"
+        html_content += f"<td style='text-align: center;'>{cards}</td>"
+        html_content += f"<td style='text-align: center;'>{study_time:.2f}</td>"
+        html_content += f"<td style='text-align: center;'>{avg_time:.2f}</td></tr>"
+    
+    html_content += "</table>"
+    
+    # 设置HTML内容
+    stats_text_edit.setHtml(html_content)
+
 
 # --- 原始函数：保持函数签名不变 ---
 def add_stats(statsdialog: NewDeckStats) -> None:
@@ -171,32 +184,14 @@ def add_stats(statsdialog: NewDeckStats) -> None:
         print(f"  移动原生控件: {getattr(widget, 'objectName', 'N/A')()} (类型: {type(widget).__name__})")
 
     # 3. 调用新函数来获取自定义统计内容的容器，传入当前牌组名称
-    # 尝试获取当前牌组名称
-    try:
-        # 打印statsdialog对象的所有属性
-        print("=== statsdialog 对象属性 ===")
-        for attr in dir(statsdialog):
-            if not attr.startswith('__'):  # 过滤掉内置属性
-                try:
-                    value = getattr(statsdialog, attr)
-                    print(f"{attr}: {type(value)}")
-                except Exception as e:
-                    print(f"{attr}: [无法获取值]")
-        
-        # 尝试从不同位置获取牌组名称
-        if hasattr(statsdialog, '_deck') and isinstance(statsdialog._deck, dict):
-            current_deck_name = statsdialog._deck.get('name', '未知牌组')
-        elif hasattr(statsdialog, 'deck') and isinstance(statsdialog.deck, dict):
-            current_deck_name = statsdialog.deck.get('name', '未知牌组')
-        else:
-            # 作为后备方案，获取当前选中的牌组
+        # 获取当前牌组名称
+        try:
             current_deck = mw.col.decks.current()
             current_deck_name = current_deck['name'] if current_deck else '未知牌组'
-            
-        print(f"当前牌组名称: {current_deck_name}")
-    except Exception as e:
-        print(f"获取牌组名称时出错: {e}")
-        current_deck_name = '未知牌组'
+            print(f"当前牌组名称: {current_deck_name}")
+        except Exception as e:
+            print(f"获取牌组名称时出错: {e}")
+            current_deck_name = '未知牌组'
         
     my_custom_stats_container = create_custom_stats_tab_content(current_deck_name)
 
@@ -207,5 +202,57 @@ def add_stats(statsdialog: NewDeckStats) -> None:
     # 5. 将 QTabWidget 添加到 statsdialog 的主布局
     main_dialog_layout.addWidget(tab_widget)
     main_dialog_layout.setStretch(main_dialog_layout.indexOf(tab_widget), 1)
+
+    # 6. 连接牌组选择变化信号到刷新函数
+    # 调试输出statsdialog完整结构
+    print("\n=== statsdialog结构分析 ===")
+    print(f"statsdialog类型: {type(statsdialog)}")
+    print(f"statsdialog对象名: {statsdialog.objectName()}")
+    
+    # 输出所有子控件
+    print("\n子控件列表:")
+    children = statsdialog.findChildren(QWidget)
+    for i, child in enumerate(children):
+        print(f"{i}: {type(child).__name__} 对象名='{child.objectName()}'")
+    
+    # 定义刷新函数
+    def on_deck_changed():
+        current_deck = mw.col.decks.current()
+        deck_name = current_deck['name'] if current_deck else '未知牌组'
+        print(f"牌组已切换至: {deck_name}")
+        refresh_stats_content(my_custom_stats_container, deck_name)
+    
+    # 方法1: 使用Anki的hook系统
+    print("\n注册牌组变化hook")
+    def on_deck_browser_did_render(deck_browser, _):
+        try:
+            on_deck_changed()
+        except Exception as e:
+            print(f"hook回调出错: {e}")
+    
+    gui_hooks.deck_browser_did_render.append(on_deck_browser_did_render)
+    
+    # 方法2: 定时检查牌组变化 (使用single_shot避免内存泄漏)
+    print("\n设置安全的定时检查牌组变化")
+    last_deck_name = current_deck_name
+    def check_deck_changed():
+        nonlocal last_deck_name
+        try:
+            current_deck = mw.col.decks.current()
+            new_deck_name = current_deck['name'] if current_deck else '未知牌组'
+            if new_deck_name != last_deck_name:
+                last_deck_name = new_deck_name
+                print(f"定时检查检测到牌组变化: {new_deck_name}")
+                on_deck_changed()
+        except Exception as e:
+            print(f"定时检查出错: {e}")
+        finally:
+            # 使用single_shot并指定parent避免内存泄漏
+            mw.progress.single_shot(1000, check_deck_changed, my_custom_stats_container)
+    
+    # 首次启动定时检查
+    mw.progress.single_shot(1000, check_deck_changed, my_custom_stats_container)
+    
+    print("\n已设置安全的牌组变化检测机制 (hook + single_shot定时检查)")
 
     print("--- add_stats (Tabbed Interface): 选项卡界面创建完成。 ---")
