@@ -95,7 +95,7 @@ def Process_back_html(showing_sentence, showing_translation, html):
                 text-transform: uppercase;
             ">原始卡片</div>
             <div style="
-                font-size: 14px;
+                font-size: 24px;
                 line-height: 1.4;
                 opacity: 0.8;
             ">{html}</div>
