@@ -1,89 +1,209 @@
-　<!DOCTYPE html>
+<!DOCTYPE html>
 <html>
 <head>
     <style>
         body {
-            background: white;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol";
+            background-color: #f0f2f5; /* Softer background */
+            color: #333;
             margin: 0;
             padding: 0;
+            line-height: 1.6;
         }
+
         .stats-container {
             max-width: 100%;
-            padding: 15px;
-            background: white;
+            /* Padding moved to specific sections */
         }
-        .charts-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(300px, 600px));
+
+        .page-header {
+            background-color: white;
+            padding: 20px 15px;
+            text-align: center;
+            border-bottom: 1px solid #dee2e6;
+            margin-bottom: 25px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+        }
+
+        .page-header h2 { /* Changed from h3 for semantics */
+            margin: 0;
+            color: #2c3e50; /* Darker, more professional blue/grey */
+            font-size: 1.8em;
+            font-weight: 600;
+        }
+
+        .time-range-selector {
+            display: flex;
             justify-content: center;
-            gap: 20px;
-        }
-        .chart-container {
-            width: 100%;
-            margin: 0 auto 20px;
-            padding: 15px;
-            background: #f8f9fa;
+            align-items: center;
+            padding: 10px; /* Reduced padding as labels have their own */
+            margin: 0 auto 25px auto;
+            background-color: white;
             border-radius: 8px;
             box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+            max-width: 500px; /* Control width */
+            border: 1px solid #e0e0e0;
+        }
+
+        .time-range-selector input[type="radio"] {
+            display: none; /* Hide actual radio button */
+        }
+
+        .time-range-selector label {
+            padding: 8px 15px;
+            margin: 0 3px; /* Spacing between buttons */
+            border-radius: 6px;
+            color: #007bff;
+            border: 1px solid transparent; /* Placeholder for border */
+            cursor: pointer;
+            font-size: 0.9em;
+            font-weight: 500;
+            transition: background-color 0.2s ease, color 0.2s ease, border-color 0.2s ease;
+        }
+        .time-range-selector label:hover {
+            background-color: #e9ecef;
+            border-color: #ced4da;
+        }
+
+        .time-range-selector input[type="radio"]:checked + label {
+            background-color: #007bff;
+            color: white;
+            font-weight: 600;
+            border-color: #007bff;
+        }
+        
+        /* Title for the time range group */
+        .time-range-title {
+            margin-right: 15px;
+            font-weight: bold;
+            color: #495057;
+            font-size: 0.95em;
+        }
+
+
+        .charts-grid {
+            display: grid;
+            /* Adjusted clamp for better balance, vw unit can be tricky */
+            grid-template-columns: repeat(auto-fit, clamp(320px, 48vw, 650px));
+            justify-content: center;
+            gap: 25px; /* Increased gap */
+            padding: 0 20px 20px 20px; /* Padding around the grid */
+            /* Removed transition from grid itself for smoother reflow */
+        }
+
+        .chart-container {
+            width: 100%;
+            padding: 20px; /* Increased padding */
+            background: white;
+            border-radius: 10px; /* Softer radius */
+            box-shadow: 0 2px 5px rgba(0,0,0,0.07); /* Subtler, softer shadow */
             box-sizing: border-box;
+            transition: box-shadow 0.3s ease; /* For hover effect */
+            display: flex; /* Added to manage loading message and canvas better */
+            flex-direction: column; /* Stack title, loading/canvas vertically */
         }
-        h3 {
+
+        .chart-container:hover {
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+        }
+        
+        h3.chart-title { /* Specific styling for chart titles */
             margin-top: 0;
-            color: #333;
+            margin-bottom: 15px;
+            color: #343a40;
             text-align: center;
+            font-size: 1.1em;
+            font-weight: 600;
         }
+
         .loading {
             text-align: center;
             padding: 20px;
-            color: #666;
+            color: #6c757d; /* Softer grey */
+            font-style: italic;
+            flex-grow: 1; /* Allow loading to take space if canvas is not there */
+            display: flex;
+            align-items: center;
+            justify-content: center;
         }
+
         canvas {
             width: 100% !important;
-            height: 300px !important;
+            height: 300px !important; /* Slightly reduced for better proportion */
+            display: block; /* Removes any tiny space below if inline */
         }
-        @media (max-width: 900px) {
+
+        @media (max-width: 720px) { /* Adjusted breakpoint */
             .charts-grid {
-                grid-template-columns: minmax(300px, 600px);
+                grid-template-columns: minmax(300px, 1fr); /* Single flexible column */
+                padding: 0 15px 15px 15px;
+            }
+            .page-header h2 {
+                font-size: 1.5em;
+            }
+            .time-range-selector {
+                flex-direction: column; /* Stack options vertically on small screens */
+                max-width: 90%;
+            }
+            .time-range-selector label {
+                width: calc(100% - 30px); /* Full width minus padding */
+                text-align: center;
+                margin: 5px 0;
+            }
+            .time-range-title {
+                margin-right: 0;
+                margin-bottom: 10px;
             }
         }
     </style>
 </head>
 <body>
     <div class="stats-container">
-        <h3 style="color: #333; padding: 10px; border-bottom: 1px solid #eee; margin-bottom: 20px;">{deck_name} - 学习统计</h3>
+        <div class="page-header">
+            <h2>{deck_name} - 学习统计</h2>
+        </div>
         
-        <div style="margin: 15px 0; padding: 10px; text-align: center; border-bottom: 1px solid #eee;">
-            <label style="margin-right: 10px; font-weight: bold; color: #555;">时间范围:</label>
-            <input type="radio" id="weekRange" name="timeRange" value="week">
-            <label for="weekRange" style="margin-right: 10px; padding: 5px 10px; border-radius: 4px; color: #333;">最近一周</label>
-            <input type="radio" id="monthRange" name="timeRange" value="month" checked>
-            <label for="monthRange" style="margin-right: 10px; padding: 5px 10px; border-radius: 4px; color: #333;">最近一月</label>
-            <input type="radio" id="yearRange" name="timeRange" value="year">
-            <label for="yearRange" style="padding: 5px 10px; border-radius: 4px; color: #333;">最近一年</label>
+        <div class="time-range-selector">
+            <span class="time-range-title">时间范围:</span>
+            <div> <!-- Wrapper for radio buttons for better flex control if needed -->
+                <input type="radio" id="range-week" name="timeRange" value="week">
+                <label for="range-week">最近一周</label>
+                
+                <input type="radio" id="range-month" name="timeRange" value="month" checked>
+                <label for="range-month">最近一月</label>
+                
+                <input type="radio" id="range-year" name="timeRange" value="year">
+                <label for="range-year">最近一年</label>
+            </div>
         </div>
         
         <div class="charts-grid">
             <div class="chart-container">
+                <h3 class="chart-title">每日学习卡片数</h3>
                 <div class="loading">图表加载中...</div>
                 <canvas id="cardsChart"></canvas>
             </div>
             
             <div class="chart-container">
+                <h3 class="chart-title">每日学习时间(分钟)</h3>
                 <div class="loading">图表加载中...</div>
                 <canvas id="timeChart"></canvas>
             </div>
             
             <div class="chart-container">
+                <h3 class="chart-title">卡片平均学习时间(秒)</h3>
                 <div class="loading">图表加载中...</div>
                 <canvas id="avgTimeChart"></canvas>
             </div>
 
             <div class="chart-container">
+                <h3 class="chart-title">累计学习卡片数</h3>
                 <div class="loading">图表加载中...</div>
                 <canvas id="totalCardsChart"></canvas>
             </div>
             
             <div class="chart-container">
+                <h3 class="chart-title">累计学习时间(小时)</h3>
                 <div class="loading">图表加载中...</div>
                 <canvas id="totalTimeChart"></canvas>
             </div>
@@ -109,35 +229,44 @@
         function filterDataByRange(range) {
             let days = 7;
             if (range === 'month') days = 30;
-            if (range === 'year') days = allDates.length;
+            // For 'year', show all available data up to 365, or less if data is less.
+            // If you want strictly "last 365 days even if more data exists", change allDates.length to 365.
+            if (range === 'year') days = Math.min(365, allDates.length); 
             
-            // 确保不超过数据长度
+            // Ensure not to request more days than available
             days = Math.min(days, allDates.length);
             
-            // 获取指定天数的数据
-            let filteredDates = allDates.slice(-days);
-            let filteredCards = allCardsData.slice(-days);
-            let filteredTime = allTimeData.slice(-days);
-            let filteredAvgTime = allAvgTimeData.slice(-days);
-            let filteredTotalCards = allTotalCardsData.slice(-days);
-            let filteredTotalTime = allTotalTimeData.slice(-days);
+            // Get data for the last 'days'
+            let startIndex = Math.max(0, allDates.length - days);
+
+            let filteredDates = allDates.slice(startIndex);
+            let filteredCards = allCardsData.slice(startIndex);
+            let filteredTime = allTimeData.slice(startIndex);
+            let filteredAvgTime = allAvgTimeData.slice(startIndex);
+            let filteredTotalCards = allTotalCardsData.slice(startIndex);
+            let filteredTotalTime = allTotalTimeData.slice(startIndex);
             
-            // 过滤前端连续为0的数据
-            let firstNonZero = 0;
+            // Filter leading zeros from the selected range
+            let firstNonZeroIndex = 0;
+            // Find the first day with any activity (cards studied) in the filtered range
             for (let i = 0; i < filteredCards.length; i++) {
-                if (filteredCards[i] > 0) {
-                    firstNonZero = i;
+                if (filteredCards[i] > 0 || filteredTime[i] > 0) { // Check cards or time
+                    firstNonZeroIndex = i;
                     break;
+                }
+                // If all are zero, firstNonZeroIndex will remain 0, showing the full selected (empty) range
+                if (i === filteredCards.length - 1) { 
+                    firstNonZeroIndex = i; // Or some might prefer filteredCards.length to show nothing
                 }
             }
             
             return {
-                dates: filteredDates.slice(firstNonZero),
-                cards: filteredCards.slice(firstNonZero),
-                time: filteredTime.slice(firstNonZero),
-                avgTime: filteredAvgTime.slice(firstNonZero),
-                totalCards: filteredTotalCards.slice(firstNonZero),
-                totalTime: filteredTotalTime.slice(firstNonZero)
+                dates: filteredDates.slice(firstNonZeroIndex),
+                cards: filteredCards.slice(firstNonZeroIndex),
+                time: filteredTime.slice(firstNonZeroIndex),
+                avgTime: filteredAvgTime.slice(firstNonZeroIndex),
+                totalCards: filteredTotalCards.slice(firstNonZeroIndex),
+                totalTime: filteredTotalTime.slice(firstNonZeroIndex)
             };
         }
         
@@ -145,36 +274,30 @@
         function updateCharts(range) {
             const filtered = filterDataByRange(range);
             
-            // 更新卡片数图表
-            cardsChart.data.labels = filtered.dates;
-            cardsChart.data.datasets[0].data = filtered.cards;
-            cardsChart.update();
-            
-            // 更新时间图表
-            timeChart.data.labels = filtered.dates;
-            timeChart.data.datasets[0].data = filtered.time;
-            timeChart.update();
-            
-            // 更新平均时间图表
-            avgTimeChart.data.labels = filtered.dates;
-            avgTimeChart.data.datasets[0].data = filtered.avgTime;
-            avgTimeChart.update();
-            
-            // 更新累计卡片数图表
-            totalCardsChart.data.labels = filtered.dates;
-            totalCardsChart.data.datasets[0].data = filtered.totalCards;
-            totalCardsChart.update();
-            
-            // 更新累计学习时间图表
-            totalTimeChart.data.labels = filtered.dates;
-            totalTimeChart.data.datasets[0].data = filtered.totalTime;
-            totalTimeChart.update();
+            const charts = [
+                { chart: cardsChart, data: filtered.cards },
+                { chart: timeChart, data: filtered.time },
+                { chart: avgTimeChart, data: filtered.avgTime },
+                { chart: totalCardsChart, data: filtered.totalCards },
+                { chart: totalTimeChart, data: filtered.totalTime }
+            ];
+
+            charts.forEach(item => {
+                if (item.chart) { // Check if chart instance exists
+                    item.chart.data.labels = filtered.dates;
+                    item.chart.data.datasets[0].data = item.data;
+                    item.chart.update();
+                }
+            });
         }
         
         function initCharts() {
             const maxRetries = 10;
             let retryCount = 0;
             
+            const loadingElements = document.querySelectorAll('.loading');
+            const canvasElements = document.querySelectorAll('canvas');
+
             function tryInit() {
                 if (typeof Chart === 'undefined') {
                     if (retryCount < maxRetries) {
@@ -182,20 +305,51 @@
                         setTimeout(tryInit, 100);
                         return;
                     }
-                    // 加载失败处理
-                    document.querySelectorAll('.loading').forEach(el => {
-                        el.textContent = '图表库加载失败，请检查网络连接';
+                    loadingElements.forEach(el => {
+                        el.textContent = '图表库加载失败，请检查网络连接。';
                         el.style.color = 'red';
                     });
                     return;
                 }
                 
-                // 隐藏加载提示
-                document.querySelectorAll('.loading').forEach(el => el.style.display = 'none');
+                loadingElements.forEach(el => el.style.display = 'none');
+                canvasElements.forEach(cv => cv.style.display = 'block'); // Show canvas
                 
-                // 获取默认选中的时间范围
                 const defaultRange = document.querySelector('input[name="timeRange"]:checked').value;
-                const filtered = filterDataByRange(defaultRange);
+                const initialFilteredData = filterDataByRange(defaultRange); // Use consistent naming
+                
+                const commonLineOptions = {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    tension: 0.2, // Slightly smoother lines
+                    plugins: {
+                        legend: { display: false }, // Hiding legend as title is clear
+                        title: { display: false } // Using custom h3 titles now
+                    },
+                    scales: {
+                        x: { grid: { display: false } },
+                        y: { 
+                            beginAtZero: true,
+                            grid: { color: '#e9ecef' } // Lighter grid lines
+                        }
+                    }
+                };
+
+                const commonBarOptions = {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { display: false },
+                        title: { display: false }
+                    },
+                    scales: {
+                        x: { grid: { display: false } },
+                        y: { 
+                            beginAtZero: true,
+                            grid: { color: '#e9ecef' }
+                        }
+                    }
+                };
                 
                 // 学习卡片数图表
                 cardsChart = new Chart(
@@ -203,25 +357,17 @@
                     {
                         type: 'line',
                         data: {
-                            labels: filtered.dates,
+                            labels: initialFilteredData.dates,
                             datasets: [{
-                                label: '学习卡片数',
-                                data: filtered.cards,
+                                // label: '学习卡片数', // Not needed if legend is off
+                                data: initialFilteredData.cards,
                                 borderColor: 'rgb(75, 192, 192)',
-                                tension: 0.1,
-                                fill: false
+                                backgroundColor: 'rgba(75, 192, 192, 0.1)',
+                                fill: true,
+                                borderWidth: 2
                             }]
                         },
-                        options: {
-                            responsive: true,
-                            maintainAspectRatio: false,
-                            plugins: {
-                                title: {
-                                    display: true,
-                                    text: '每日学习卡片数'
-                                }
-                            }
-                        }
+                        options: { ...commonLineOptions }
                     }
                 );
                 
@@ -231,25 +377,17 @@
                     {
                         type: 'bar',
                         data: {
-                            labels: filtered.dates,
+                            labels: initialFilteredData.dates,
                             datasets: [{
-                                label: '学习时间(分钟)',
-                                data: filtered.time,
-                                backgroundColor: 'rgba(54, 162, 235, 0.5)',
+                                // label: '学习时间(分钟)',
+                                data: initialFilteredData.time,
+                                backgroundColor: 'rgba(54, 162, 235, 0.7)',
                                 borderColor: 'rgb(54, 162, 235)',
-                                borderWidth: 1
+                                borderWidth: 1,
+                                borderRadius: 4, // Rounded bars
                             }]
                         },
-                        options: {
-                            responsive: true,
-                            maintainAspectRatio: false,
-                            plugins: {
-                                title: {
-                                    display: true,
-                                    text: '每日学习时间(分钟)'
-                                }
-                            }
-                        }
+                        options: { ...commonBarOptions }
                     }
                 );
                 
@@ -259,54 +397,37 @@
                     {
                         type: 'line',
                         data: {
-                            labels: filtered.dates,
+                            labels: initialFilteredData.dates,
                             datasets: [{
-                                label: '平均学习时间(秒/卡片)',
-                                data: filtered.avgTime,
+                                // label: '平均学习时间(秒/卡片)',
+                                data: initialFilteredData.avgTime,
                                 borderColor: 'rgb(255, 99, 132)',
-                                backgroundColor: 'rgba(255, 99, 132, 0.5)',
-                                tension: 0.1,
-                                fill: true
+                                backgroundColor: 'rgba(255, 99, 132, 0.1)',
+                                fill: true,
+                                borderWidth: 2
                             }]
                         },
-                        options: {
-                            responsive: true,
-                            maintainAspectRatio: false,
-                            plugins: {
-                                title: {
-                                    display: true,
-                                    text: '卡片平均学习时间(秒)'
-                                }
-                            }
-                        }
+                        options: { ...commonLineOptions }
                     }
                 );
+
                 // 累计卡片数图表
                 totalCardsChart = new Chart(
                     document.getElementById('totalCardsChart'),
                     {
                         type: 'line',
                         data: {
-                            labels: filtered.dates,
+                            labels: initialFilteredData.dates,
                             datasets: [{
-                                label: '累计学习卡片数',
-                                data: filtered.totalCards,
+                                // label: '累计学习卡片数',
+                                data: initialFilteredData.totalCards,
                                 borderColor: 'rgb(153, 102, 255)',
-                                backgroundColor: 'rgba(153, 102, 255, 0.5)',
-                                tension: 0.1,
-                                fill: true
+                                backgroundColor: 'rgba(153, 102, 255, 0.1)',
+                                fill: true,
+                                borderWidth: 2
                             }]
                         },
-                        options: {
-                            responsive: true,
-                            maintainAspectRatio: false,
-                            plugins: {
-                                title: {
-                                    display: true,
-                                    text: '累计学习卡片数'
-                                }
-                            }
-                        }
+                        options: { ...commonLineOptions }
                     }
                 );
                 
@@ -316,40 +437,46 @@
                     {
                         type: 'line',
                         data: {
-                            labels: filtered.dates,
+                            labels: initialFilteredData.dates,
                             datasets: [{
-                                label: '累计学习时间(小时)',
-                                data: filtered.totalTime,
+                                // label: '累计学习时间(小时)',
+                                data: initialFilteredData.totalTime,
                                 borderColor: 'rgb(255, 159, 64)',
-                                backgroundColor: 'rgba(255, 159, 64, 0.5)',
-                                tension: 0.1,
-                                fill: true
+                                backgroundColor: 'rgba(255, 159, 64, 0.1)',
+                                fill: true,
+                                borderWidth: 2
                             }]
                         },
-                        options: {
-                            responsive: true,
-                            maintainAspectRatio: false,
-                            plugins: {
-                                title: {
-                                    display: true,
-                                    text: '累计学习时间(小时)'
-                                }
-                            }
-                        }
+                        options: { ...commonLineOptions }
                     }
                 );
+
+                // Initial update to ensure correct display if data was all zeros initially
+                updateCharts(defaultRange);
             }
+            
+            // Initially hide canvas, show loading
+            canvasElements.forEach(cv => cv.style.display = 'none');
+            loadingElements.forEach(el => el.style.display = 'flex'); // Use flex for vertical centering
+
             tryInit();
             
-            // 添加时间范围选择事件监听
             document.querySelectorAll('input[name="timeRange"]').forEach(radio => {
                 radio.addEventListener('change', function() {
-                    updateCharts(this.value);
+                    // Show loading indicators while charts update
+                    loadingElements.forEach(el => el.style.display = 'flex');
+                    canvasElements.forEach(cv => cv.style.display = 'none');
+
+                    // Allow the UI to update (show loading) before blocking with chart updates
+                    setTimeout(() => {
+                        updateCharts(this.value);
+                        loadingElements.forEach(el => el.style.display = 'none');
+                        canvasElements.forEach(cv => cv.style.display = 'block');
+                    }, 10); // A small delay
                 });
             });
         }
         
-        // 页面加载完成后初始化图表
         document.addEventListener('DOMContentLoaded', initCharts);
     </script>
 </body>
