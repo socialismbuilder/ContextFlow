@@ -141,9 +141,11 @@ def refresh_stats_content(container, deck_name):
     cards_data = []
     time_data = []
     avg_time_data = []
+    total_cards_data = []
+    total_time_data = []
     
-    # 填充日期序列并匹配数据
-    for i in range(365):
+    # 填充日期序列并匹配数据（从最早日期开始）
+    for i in reversed(range(365)):
         day_date = end_date - timedelta(days=i)
         date_str = day_date.strftime('%m-%d')
         cards = cards_by_date.get(date_str, 0)
@@ -158,7 +160,15 @@ def refresh_stats_content(container, deck_name):
         time_data.append(study_time_minutes)
         avg_time_data.append(avg_time)
     
-    # 反转数据，使日期从早到晚
+    # 计算累计值（从最早日期开始累加）
+    total_cards = 0
+    total_time_minutes = 0
+    for i in range(len(dates)):
+        total_cards += cards_data[i]
+        total_time_minutes += time_data[i]
+        total_cards_data.append(total_cards)
+        total_time_data.append(total_time_minutes / 60)  # 转换为小时
+    
     # 过滤前端连续为0的数据
     first_non_zero = 0
     for i, cards in enumerate(cards_data):
@@ -170,12 +180,8 @@ def refresh_stats_content(container, deck_name):
     cards_data = cards_data[first_non_zero:]
     time_data = time_data[first_non_zero:]
     avg_time_data = avg_time_data[first_non_zero:]
-    
-    # 反转数据，使日期从早到晚
-    dates.reverse()
-    cards_data.reverse()
-    time_data.reverse()
-    avg_time_data.reverse()
+    total_cards_data = total_cards_data[first_non_zero:]
+    total_time_data = total_time_data[first_non_zero:]
     
     # 从模板文件读取HTML内容（使用插件根目录路径）
     import os
@@ -194,6 +200,8 @@ def refresh_stats_content(container, deck_name):
     html_content = html_content.replace('{cards_data}', str(cards_data))
     html_content = html_content.replace('{time_data}', str(time_data))
     html_content = html_content.replace('{avg_time_data}', str(avg_time_data))
+    html_content = html_content.replace('{total_cards_data}', str(total_cards_data))
+    html_content = html_content.replace('{total_time_data}', str(total_time_data))
     html_content = html_content.replace('{chart_js_content}', chart_js_content)
     
     # 设置HTML内容
