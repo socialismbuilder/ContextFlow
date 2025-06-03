@@ -46,9 +46,9 @@ def create_custom_stats_tab_content(deck_name: str) -> QWidget:
     return my_custom_stats_container
 
 # 辅助函数：获取指定牌组在日期范围内的学习数据
-def get_deck_study_stats_for_date_range(deck_name: str, start_date: date, end_date: date) -> tuple[int, float]:
+def get_deck_study_stats_for_date_range(deck_name: str, start_date: date, end_date: date) -> tuple[dict, dict]:
     """
-    查询指定牌组在给定日期范围内的学习卡片数量和总学习时间。
+    查询指定牌组在给定日期范围内的学习卡片数量和总学习时间，按日期分组。
     
     注意：此函数需要在一个Anki插件环境或任何可以访问 `mw.col` (Anki收藏对象) 的环境中运行。
           `mw.col` 通常通过 `from aqt import mw` 获得。
@@ -56,23 +56,23 @@ def get_deck_study_stats_for_date_range(deck_name: str, start_date: date, end_da
     :param deck_name: 要查询的牌组名称。
     :param start_date: 查询的开始日期（datetime.date 对象）。
     :param end_date: 查询的结束日期（datetime.date 对象）。
-    :return: 一个元组 (学习卡片数量, 总学习时间_秒)。
-             如果牌组未找到，或 Anki 收藏不可用，或发生错误，返回 (0, 0.0)。
+    :return: 两个字典 (按日期的卡片数量, 按日期的学习时间_秒)。
+             如果牌组未找到，或 Anki 收藏不可用，或发生错误，返回 ({}, {})。
     """
     # 确保 Anki 收藏对象 mw.col 是可用的
     if mw is None or mw.col is None:
         print("错误：Anki 收藏未打开或不可用。")
-        return 0, 0.0
+        return {}, {}
 
-    total_cards_reviewed = 0
-    total_study_time_seconds = 0.0
+    cards_by_date = {}
+    time_by_date = {}
 
     try:
         # 1. 根据牌组名称获取牌组 ID
         deck = mw.col.decks.by_name(deck_name)
         if not deck:
             print(f"牌组 '{deck_name}' 未找到。")
-            return 0, 0.0
+            return {}, {}
         deck_id = deck['id']
         
         # 2. 构建时间范围的时间戳（毫秒）
@@ -88,30 +88,34 @@ def get_deck_study_stats_for_date_range(deck_name: str, start_date: date, end_da
         deck_ids = [d['id'] for d in mw.col.decks.all() if deck_name in d['name']]
         
         if not deck_ids:
-            return 0, 0.0
+            return {}, {}
             
-        # 构建查询语句
+        # 构建查询语句 - 按日期分组
         query = f"""
-            SELECT COUNT(*), SUM(time)/1000.0 
+            SELECT 
+                strftime('%m-%d', datetime(id/1000, 'unixepoch', 'localtime')) as day,
+                COUNT(*) as cards,
+                SUM(time)/1000.0 as study_time
             FROM revlog 
             WHERE cid IN (
                 SELECT id FROM cards WHERE did IN ({','.join(str(id) for id in deck_ids)})
             ) AND id >= {start_timestamp}
             AND id <= {end_timestamp}
             AND time > 1  -- 过滤学习时间小于0.1秒的记录
+            GROUP BY day
+            ORDER BY day
         """
         
         # 执行查询
-        result = mw.col.db.first(query)
-        if result:
-            total_cards_reviewed = result[0] or 0
-            total_study_time_seconds = result[1] or 0.0
+        for day, cards, study_time in mw.col.db.execute(query):
+            cards_by_date[day] = cards
+            time_by_date[day] = study_time
             
     except Exception as e:
         print(f"查询学习统计时出错: {e}")
-        return 0, 0.0
+        return {}, {}
 
-    return total_cards_reviewed, total_study_time_seconds
+    return cards_by_date, time_by_date
 
 # 刷新统计内容函数
 def refresh_stats_content(container, deck_name):
@@ -127,7 +131,10 @@ def refresh_stats_content(container, deck_name):
     # 设置加载中状态
     stats_webview.setHtml('<div style="padding:20px;text-align:center;">数据加载中...</div>')
     end_date = date.today()
-    start_date = end_date - timedelta(days=29)  # 获取30天数据
+    start_date = end_date - timedelta(days=364)  # 获取1年数据
+    
+    # 一次性获取所有数据
+    cards_by_date, time_by_date = get_deck_study_stats_for_date_range(deck_name, start_date, end_date)
     
     # 准备图表数据
     dates = []
@@ -135,19 +142,34 @@ def refresh_stats_content(container, deck_name):
     time_data = []
     avg_time_data = []
     
-    # 获取每日统计数据
-    for i in range(30):
+    # 填充日期序列并匹配数据
+    for i in range(365):
         day_date = end_date - timedelta(days=i)
-        cards, study_time = get_deck_study_stats_for_date_range(deck_name, day_date, day_date)
+        date_str = day_date.strftime('%m-%d')
+        cards = cards_by_date.get(date_str, 0)
+        study_time = time_by_date.get(date_str, 0)
         
         # 计算平均学习时间
         avg_time = study_time / cards if cards > 0 else 0
         study_time_minutes = study_time / 60  # 转换为分钟
         
-        dates.append(day_date.strftime('%m-%d'))
+        dates.append(date_str)
         cards_data.append(cards)
         time_data.append(study_time_minutes)
         avg_time_data.append(avg_time)
+    
+    # 反转数据，使日期从早到晚
+    # 过滤前端连续为0的数据
+    first_non_zero = 0
+    for i, cards in enumerate(cards_data):
+        if cards > 0:
+            first_non_zero = i
+            break
+            
+    dates = dates[first_non_zero:]
+    cards_data = cards_data[first_non_zero:]
+    time_data = time_data[first_non_zero:]
+    avg_time_data = avg_time_data[first_non_zero:]
     
     # 反转数据，使日期从早到晚
     dates.reverse()

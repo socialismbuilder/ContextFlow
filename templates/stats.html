@@ -48,7 +48,17 @@
 </head>
 <body>
     <div class="stats-container">
-        <h3>{deck_name} - 最近30天学习统计</h3>
+        <h3 style="color: #333; background: white; padding: 10px; border-radius: 5px;">{deck_name} - 学习统计</h3>
+        
+        <div style="margin: 15px 0; text-align: center;">
+            <label style="margin-right: 10px;">时间范围:</label>
+            <input type="radio" id="weekRange" name="timeRange" value="week" checked>
+            <label for="weekRange" style="margin-right: 10px;">最近一周</label>
+            <input type="radio" id="monthRange" name="timeRange" value="month">
+            <label for="monthRange" style="margin-right: 10px;">最近一月</label>
+            <input type="radio" id="yearRange" name="timeRange" value="year">
+            <label for="yearRange">最近一年</label>
+        </div>
         
         <div class="charts-grid">
             <div class="chart-container">
@@ -73,6 +83,66 @@
         {chart_js_content}
     </script>
     <script>
+        // 全局变量存储图表实例
+        let cardsChart, timeChart, avgTimeChart;
+        // 全局变量存储原始数据
+        let allDates = {dates};
+        let allCardsData = {cards_data};
+        let allTimeData = {time_data};
+        let allAvgTimeData = {avg_time_data};
+        
+        // 根据选择的时间范围过滤数据
+        function filterDataByRange(range) {
+            let days = 7;
+            if (range === 'month') days = 30;
+            if (range === 'year') days = allDates.length;
+            
+            // 确保不超过数据长度
+            days = Math.min(days, allDates.length);
+            
+            // 获取指定天数的数据
+            let filteredDates = allDates.slice(-days);
+            let filteredCards = allCardsData.slice(-days);
+            let filteredTime = allTimeData.slice(-days);
+            let filteredAvgTime = allAvgTimeData.slice(-days);
+            
+            // 过滤前端连续为0的数据
+            let firstNonZero = 0;
+            for (let i = 0; i < filteredCards.length; i++) {
+                if (filteredCards[i] > 0) {
+                    firstNonZero = i;
+                    break;
+                }
+            }
+            
+            return {
+                dates: filteredDates.slice(firstNonZero),
+                cards: filteredCards.slice(firstNonZero),
+                time: filteredTime.slice(firstNonZero),
+                avgTime: filteredAvgTime.slice(firstNonZero)
+            };
+        }
+        
+        // 更新图表数据
+        function updateCharts(range) {
+            const filtered = filterDataByRange(range);
+            
+            // 更新卡片数图表
+            cardsChart.data.labels = filtered.dates;
+            cardsChart.data.datasets[0].data = filtered.cards;
+            cardsChart.update();
+            
+            // 更新时间图表
+            timeChart.data.labels = filtered.dates;
+            timeChart.data.datasets[0].data = filtered.time;
+            timeChart.update();
+            
+            // 更新平均时间图表
+            avgTimeChart.data.labels = filtered.dates;
+            avgTimeChart.data.datasets[0].data = filtered.avgTime;
+            avgTimeChart.update();
+        }
+        
         function initCharts() {
             const maxRetries = 10;
             let retryCount = 0;
@@ -96,7 +166,7 @@
                 document.querySelectorAll('.loading').forEach(el => el.style.display = 'none');
                 
                 // 学习卡片数图表
-                new Chart(
+                cardsChart = new Chart(
                     document.getElementById('cardsChart'),
                     {
                         type: 'line',
@@ -124,7 +194,7 @@
                 );
                 
                 // 总学习时间图表
-                new Chart(
+                timeChart = new Chart(
                     document.getElementById('timeChart'),
                     {
                         type: 'bar',
@@ -152,7 +222,7 @@
                 );
                 
                 // 平均学习时间图表
-                new Chart(
+                avgTimeChart = new Chart(
                     document.getElementById('avgTimeChart'),
                     {
                         type: 'line',
@@ -181,6 +251,13 @@
                 );
             }
             tryInit();
+            
+            // 添加时间范围选择事件监听
+            document.querySelectorAll('input[name="timeRange"]').forEach(radio => {
+                radio.addEventListener('change', function() {
+                    updateCharts(this.value);
+                });
+            });
         }
         
         // 页面加载完成后初始化图表
