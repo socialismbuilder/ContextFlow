@@ -15,7 +15,7 @@ from .config_manager import get_config
 from .cache_manager import load_cache, save_cache
 from .api_client import generate_ai_sentence
 from .Process_Card import Process_back_html,Process_front_html
-
+from .stats import add_stats
 # --- 后台任务队列 ---
 task_queue = queue.PriorityQueue() # 使用优先级队列
 cache_lock = threading.Lock() # 用于保护缓存访问和队列检查/添加
@@ -547,5 +547,5 @@ def register_hooks():
     gui_hooks.card_will_show.append(on_card_render)
     gui_hooks.profile_will_close.append(stop_worker) # 注册停止函数
     gui_hooks.profile_did_open.append(start_worker)
-
+    gui_hooks.stats_dialog_will_show.append(add_stats) # 添加统计钩子
     start_worker() # 启动工作线程
