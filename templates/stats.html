@@ -52,9 +52,9 @@
         
         <div style="margin: 15px 0; text-align: center;">
             <label style="margin-right: 10px;">时间范围:</label>
-            <input type="radio" id="weekRange" name="timeRange" value="week" checked>
+            <input type="radio" id="weekRange" name="timeRange" value="week">
             <label for="weekRange" style="margin-right: 10px;">最近一周</label>
-            <input type="radio" id="monthRange" name="timeRange" value="month">
+            <input type="radio" id="monthRange" name="timeRange" value="month" checked>
             <label for="monthRange" style="margin-right: 10px;">最近一月</label>
             <input type="radio" id="yearRange" name="timeRange" value="year">
             <label for="yearRange">最近一年</label>
@@ -165,16 +165,20 @@
                 // 隐藏加载提示
                 document.querySelectorAll('.loading').forEach(el => el.style.display = 'none');
                 
+                // 获取默认选中的时间范围
+                const defaultRange = document.querySelector('input[name="timeRange"]:checked').value;
+                const filtered = filterDataByRange(defaultRange);
+                
                 // 学习卡片数图表
                 cardsChart = new Chart(
                     document.getElementById('cardsChart'),
                     {
                         type: 'line',
                         data: {
-                            labels: {dates},
+                            labels: filtered.dates,
                             datasets: [{
                                 label: '学习卡片数',
-                                data: {cards_data},
+                                data: filtered.cards,
                                 borderColor: 'rgb(75, 192, 192)',
                                 tension: 0.1,
                                 fill: false
@@ -199,10 +203,10 @@
                     {
                         type: 'bar',
                         data: {
-                            labels: {dates},
+                            labels: filtered.dates,
                             datasets: [{
                                 label: '学习时间(分钟)',
-                                data: {time_data},
+                                data: filtered.time,
                                 backgroundColor: 'rgba(54, 162, 235, 0.5)',
                                 borderColor: 'rgb(54, 162, 235)',
                                 borderWidth: 1
@@ -227,10 +231,10 @@
                     {
                         type: 'line',
                         data: {
-                            labels: {dates},
+                            labels: filtered.dates,
                             datasets: [{
                                 label: '平均学习时间(秒/卡片)',
-                                data: {avg_time_data},
+                                data: filtered.avgTime,
                                 borderColor: 'rgb(255, 99, 132)',
                                 backgroundColor: 'rgba(255, 99, 132, 0.5)',
                                 tension: 0.1,
