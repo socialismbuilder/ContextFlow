@@ -14,15 +14,15 @@
         }
         .charts-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+            grid-template-columns: repeat(auto-fit, minmax(300px, 600px));
+            justify-content: center;
             gap: 20px;
         }
         .chart-container {
             width: 100%;
-            max-width: 600px;
             margin: 0 auto 20px;
             padding: 15px;
-            background: white;
+            background: #f8f9fa;
             border-radius: 8px;
             box-shadow: 0 1px 3px rgba(0,0,0,0.05);
             box-sizing: border-box;
@@ -41,13 +41,9 @@
             width: 100% !important;
             height: 300px !important;
         }
-        @media (max-width: 800px) {
+        @media (max-width: 900px) {
             .charts-grid {
-                grid-template-columns: 1fr;
-            }
-            .chart-container {
-                width: 100%;
-                max-width: 100%;
+                grid-template-columns: minmax(300px, 600px);
             }
         }
     </style>
