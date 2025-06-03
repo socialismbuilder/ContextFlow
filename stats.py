@@ -84,18 +84,24 @@ def get_deck_study_stats_for_date_range(deck_name: str, start_date: date, end_da
         start_timestamp = int(start_dt.timestamp() * 1000)
         end_timestamp = int(end_dt.timestamp() * 1000)
         
-        # 3. 构建查询语句
+        # 3. 获取所有匹配牌组ID(包含子牌组)
+        deck_ids = [d['id'] for d in mw.col.decks.all() if deck_name in d['name']]
+        
+        if not deck_ids:
+            return 0, 0.0
+            
+        # 构建查询语句
         query = f"""
             SELECT COUNT(*), SUM(time)/1000.0 
             FROM revlog 
             WHERE cid IN (
-                SELECT id FROM cards WHERE did = {deck_id}
+                SELECT id FROM cards WHERE did IN ({','.join(str(id) for id in deck_ids)})
             ) AND id >= {start_timestamp}
             AND id <= {end_timestamp}
             AND time > 1  -- 过滤学习时间小于0.1秒的记录
         """
         
-        # 3. 执行查询
+        # 执行查询
         result = mw.col.db.first(query)
         if result:
             total_cards_reviewed = result[0] or 0
@@ -136,11 +142,11 @@ def refresh_stats_content(container, deck_name):
         
         # 计算平均学习时间
         avg_time = study_time / cards if cards > 0 else 0
-        study_time_hours = study_time / 3600  # 转换为小时
+        study_time_minutes = study_time / 60  # 转换为分钟
         
         dates.append(day_date.strftime('%m-%d'))
         cards_data.append(cards)
-        time_data.append(study_time_hours)
+        time_data.append(study_time_minutes)
         avg_time_data.append(avg_time)
     
     # 反转数据，使日期从早到晚
