@@ -93,7 +93,7 @@ def get_deck_study_stats_for_date_range(deck_name: str, start_date: date, end_da
         # 构建查询语句 - 按日期分组
         query = f"""
             SELECT 
-                strftime('%m-%d', datetime(id/1000, 'unixepoch', 'localtime')) as day,
+                strftime('%m-%d', datetime((id/1000)-14400, 'unixepoch', 'localtime')) as day,
                 COUNT(*) as cards,
                 SUM(time)/1000.0 as study_time
             FROM revlog 
