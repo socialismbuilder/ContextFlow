@@ -2,9 +2,15 @@
 <html>
 <head>
     <style>
+        body {
+            background: white;
+            margin: 0;
+            padding: 0;
+        }
         .stats-container {
             max-width: 100%;
             padding: 15px;
+            background: white;
         }
         .charts-grid {
             display: grid;
@@ -18,7 +24,7 @@
             padding: 15px;
             background: white;
             border-radius: 8px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            box-shadow: 0 1px 3px rgba(0,0,0,0.05);
             box-sizing: border-box;
         }
         h3 {
@@ -48,16 +54,16 @@
 </head>
 <body>
     <div class="stats-container">
-        <h3 style="color: #333; background: white; padding: 10px; border-radius: 5px;">{deck_name} - 学习统计</h3>
+        <h3 style="color: #333; padding: 10px; border-bottom: 1px solid #eee; margin-bottom: 20px;">{deck_name} - 学习统计</h3>
         
-        <div style="margin: 15px 0; text-align: center;">
-            <label style="margin-right: 10px;">时间范围:</label>
+        <div style="margin: 15px 0; padding: 10px; text-align: center; border-bottom: 1px solid #eee;">
+            <label style="margin-right: 10px; font-weight: bold; color: #555;">时间范围:</label>
             <input type="radio" id="weekRange" name="timeRange" value="week">
-            <label for="weekRange" style="margin-right: 10px;">最近一周</label>
+            <label for="weekRange" style="margin-right: 10px; padding: 5px 10px; border-radius: 4px; color: #333;">最近一周</label>
             <input type="radio" id="monthRange" name="timeRange" value="month" checked>
-            <label for="monthRange" style="margin-right: 10px;">最近一月</label>
+            <label for="monthRange" style="margin-right: 10px; padding: 5px 10px; border-radius: 4px; color: #333;">最近一月</label>
             <input type="radio" id="yearRange" name="timeRange" value="year">
-            <label for="yearRange">最近一年</label>
+            <label for="yearRange" style="padding: 5px 10px; border-radius: 4px; color: #333;">最近一年</label>
         </div>
         
         <div class="charts-grid">
