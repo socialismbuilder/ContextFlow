@@ -131,7 +131,7 @@ def refresh_stats_content(container, deck_name):
     # 设置加载中状态
     stats_webview.setHtml('<div style="padding:20px;text-align:center;">数据加载中...</div>')
     end_date = date.today()
-    start_date = end_date - timedelta(days=364)  # 获取1年数据
+    start_date = end_date - timedelta(days=1824)  # 获取5年数据
     
     # 一次性获取所有数据
     cards_by_date, time_by_date = get_deck_study_stats_for_date_range(deck_name, start_date, end_date)

@@ -174,6 +174,9 @@
                 
                 <input type="radio" id="range-year" name="timeRange" value="year">
                 <label for="range-year">最近一年</label>
+                
+                <input type="radio" id="range-5year" name="timeRange" value="5year">
+                <label for="range-5year">最近五年</label>
             </div>
         </div>
         
@@ -230,8 +233,9 @@
             let days = 7;
             if (range === 'month') days = 30;
             // For 'year', show all available data up to 365, or less if data is less.
-            // If you want strictly "last 365 days even if more data exists", change allDates.length to 365.
             if (range === 'year') days = Math.min(365, allDates.length); 
+            // For '5year', show all available data up to 1825 days
+            if (range === '5year') days = Math.min(1825, allDates.length);
             
             // Ensure not to request more days than available
             days = Math.min(days, allDates.length);
