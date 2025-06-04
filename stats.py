@@ -255,8 +255,8 @@ def add_stats(statsdialog: NewDeckStats) -> None:
     my_custom_stats_container = create_custom_stats_tab_content(current_deck_name)
 
     # 4. 将选项卡添加到 QTabWidget
-    tab_widget.addTab(original_stats_container, "Anki 统计")
-    tab_widget.addTab(my_custom_stats_container, "我的统计")
+    tab_widget.addTab(original_stats_container, "Anki统计")
+    tab_widget.addTab(my_custom_stats_container, "其他统计")
 
     # 5. 将 QTabWidget 添加到 statsdialog 的主布局
     main_dialog_layout.addWidget(tab_widget)
