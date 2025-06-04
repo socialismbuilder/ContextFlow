@@ -272,8 +272,14 @@ def on_card_render(html: str, card: Card, context: str) -> str:
         print(f"ERROR: 获取牌组名称失败 for card {card.id}: {e}")
         return html # 获取失败则不处理
 
+    # 解析配置中的牌组名称获取基础名称和字段索引
+    config_deck_name = config.get("deck_name")
+    # 使用正则匹配牌组名末尾的[数字]格式
+    field_index_match = re.search(r'\[(\d+)\]$', config_deck_name)
+    base_deck_name = re.sub(r'\[\d+\]$', '', config_deck_name) if field_index_match else config_deck_name
+    
     # 仅目标牌组生效
-    if (current_deck == config.get("deck_name") or current_deck.startswith(config.get("deck_name") + "::")) and card.ord == 0:
+    if (current_deck == base_deck_name or current_deck.startswith(base_deck_name + "::")) and card.ord == 0:
     # 当前牌组匹配配置的牌组（相同或子目录）
 
         # 获取当前复习器状态（'question' 或 'answer'）
@@ -284,8 +290,13 @@ def on_card_render(html: str, card: Card, context: str) -> str:
             # 如果是显示问题面
             try:
                 note = card.note()
-                # 假设关键词在第一个字段
-                keyword = note.fields[0].strip() if note.fields and len(note.fields) > 0 else ""
+                # 使用配置中解析出的字段索引
+                field_index = int(field_index_match.group(1)) - 1 if field_index_match else 0
+                # 确保字段索引在有效范围内
+                if field_index < 0 or (note.fields and field_index >= len(note.fields)):
+                    field_index = 0
+                # 获取关键词字段
+                keyword = note.fields[field_index].strip() if note.fields and len(note.fields) > field_index else ""
                 # 清理关键词
                 keyword = clean_html(keyword)
                 
