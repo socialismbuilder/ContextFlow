@@ -1,7 +1,7 @@
 {
   "name": "ContextFlow",
   "description": "通过利用人工智能（AI）动态生成例句，改变外语词汇的学习方式。结合间隔重复系统（尤其是FSRS算法）与个性化语境学习，帮助用户真正掌握单词的深层含义和用法。",
-  "version": "0.2.2",
+  "version": "0.3.0",
   "author": "socialsm_builder",
   "package": "ContextFlow",
   "modules": [
