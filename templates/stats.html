@@ -78,20 +78,18 @@
             font-size: 0.95em;
         }
 
+        /* Default grid: fluid columns, min 350px, growing with 1fr. Handles 1 or 2 columns. */
         .charts-grid {
             display: grid;
-            /* Columns are at least 450px wide, and share remaining space (1fr) */
-            /* auto-fit will add columns when they can meet this 450px minimum */
-            grid-template-columns: repeat(auto-fit, minmax(450px, 1fr));
+            grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
             gap: 25px;
             padding: 0 20px 20px 20px;
-            /* justify-content: center; /* Not needed if 1fr tracks fill and items center themselves */
         }
 
         .chart-container {
-            width: 100%; /* Takes full width of its grid cell (which is a 1fr track) */
-            max-width: 650px; /* But individual charts won't exceed this width */
-            margin-left: auto; /* Center the chart container if its grid cell is wider than 650px */
+            width: 100%; 
+            max-width: 600px; /* Default max width for charts */
+            margin-left: auto; 
             margin-right: auto;
             
             padding: 20px;
@@ -99,7 +97,7 @@
             border-radius: 10px;
             box-shadow: 0 2px 5px rgba(0,0,0,0.07);
             box-sizing: border-box;
-            transition: box-shadow 0.3s ease;
+            transition: box-shadow 0.3s ease, max-width 0.3s ease;
             display: flex;
             flex-direction: column;
         }
@@ -134,13 +132,9 @@
             display: block;
         }
 
-        /* Styles for smaller screens (max-width: 720px) */
-        /* This breakpoint defines behavior for screens narrower than where the 450px min for auto-fit would typically create two columns */
+        /* Small screens: Ensure single, reasonably sized column */
         @media (max-width: 720px) { 
             .charts-grid {
-                /* Single column, min 300px, takes available space */
-                /* The 450px min from the main rule would usually result in 1 column here anyway, */
-                /* but this ensures a slightly smaller min if needed for very narrow screens. */
                 grid-template-columns: minmax(300px, 1fr); 
                 padding: 0 15px 15px 15px;
             }
@@ -159,6 +153,32 @@
             .time-range-title {
                 margin-right: 0;
                 margin-bottom: 10px;
+            }
+        }
+
+        /* Medium screens: Force 3 columns.
+           Breakpoint: (3 * 350px for charts) + (2 * 25px for gaps) + (2 * 20px for padding) = 1050 + 50 + 40 = 1140px.
+           This is when we want to ensure we don't go to 4 columns.
+        */
+        @media (min-width: 1140px) {
+            .charts-grid {
+                /* Force 3 columns. Min width per column can be slightly less if needed, e.g., 320px, */
+                /* as we are explicitly defining 3 columns. 1fr allows them to grow. */
+                grid-template-columns: repeat(3, minmax(320px, 1fr));
+            }
+            .chart-container {
+                 max-width: 650px; /* Allow charts to be a bit wider in a 3-column layout */
+            }
+        }
+
+        /* Large screens: 3 Columns continue to expand.
+           Breakpoint: (3 * 650px for charts) + (2 * 25px for gaps) + (2 * 20px for padding) = 1950 + 50 + 40 = 2040px.
+           Or a bit earlier if you want them to start expanding sooner. Let's try 1900px.
+        */
+        @media (min-width: 1900px) { 
+            /* .charts-grid rule from 1140px (repeat(3, ...)) is still good. */
+            .chart-container {
+                max-width: none; /* Allow charts to grow to fill the 1fr track */
             }
         }
     </style>
