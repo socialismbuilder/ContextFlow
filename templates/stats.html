@@ -328,7 +328,13 @@
                     tension: 0.2, // Slightly smoother lines
                     plugins: {
                         legend: { display: false }, // Hiding legend as title is clear
-                        title: { display: false } // Using custom h3 titles now
+                        title: { display: false }, // Using custom h3 titles now
+                        tooltip: {
+                            position: 'nearest',
+                            intersect: false,
+                            yAlign: 'top',
+                            xAlign: 'center'
+                        }
                     },
                     scales: {
                         x: { grid: { display: false } },
