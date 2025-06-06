@@ -78,7 +78,9 @@
             font-size: 0.95em;
         }
 
-        /* Default grid: fluid columns, min 350px, growing with 1fr. Handles 1 or 2 columns. */
+        /* --- 优化的网格布局 --- */
+
+        /* 默认网格: 自动适应列数, 每列最小350px。适用于1列或2列布局。 */
         .charts-grid {
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
@@ -88,7 +90,8 @@
 
         .chart-container {
             width: 100%; 
-            max-width: 600px; /* Default max width for charts */
+            /* 默认最大宽度, 防止在1或2列布局时图表过宽 */
+            max-width: 600px; 
             margin-left: auto; 
             margin-right: auto;
             
@@ -97,7 +100,7 @@
             border-radius: 10px;
             box-shadow: 0 2px 5px rgba(0,0,0,0.07);
             box-sizing: border-box;
-            transition: box-shadow 0.3s ease, max-width 0.3s ease;
+            transition: box-shadow 0.3s ease;
             display: flex;
             flex-direction: column;
         }
@@ -132,7 +135,7 @@
             display: block;
         }
 
-        /* Small screens: Ensure single, reasonably sized column */
+        /* 小屏幕: 单列布局 */
         @media (max-width: 720px) { 
             .charts-grid {
                 grid-template-columns: minmax(300px, 1fr); 
@@ -156,31 +159,19 @@
             }
         }
 
-        /* Medium screens: Force 3 columns.
-           Breakpoint: (3 * 350px for charts) + (2 * 25px for gaps) + (2 * 20px for padding) = 1050 + 50 + 40 = 1140px.
-           This is when we want to ensure we don't go to 4 columns.
-        */
+        /* 大屏幕 (包括2K, 4K等): 强制3列，并让图表充分利用空间 */
+        /* 断点计算: (3 * 350px) + (2 * 25px gap) + (2 * 20px padding) = 1140px */
         @media (min-width: 1140px) {
             .charts-grid {
-                /* Force 3 columns. Min width per column can be slightly less if needed, e.g., 320px, */
-                /* as we are explicitly defining 3 columns. 1fr allows them to grow. */
-                grid-template-columns: repeat(3, minmax(320px, 1fr));
+                /* 强制3列，每列等宽并可伸缩 */
+                grid-template-columns: repeat(3, 1fr);
             }
             .chart-container {
-                 max-width: 650px; /* Allow charts to be a bit wider in a 3-column layout */
+                 /* 移除最大宽度限制, 让图表填充整个列 */
+                 max-width: none;
             }
         }
 
-        /* Large screens: 3 Columns continue to expand.
-           Breakpoint: (3 * 650px for charts) + (2 * 25px for gaps) + (2 * 20px for padding) = 1950 + 50 + 40 = 2040px.
-           Or a bit earlier if you want them to start expanding sooner. Let's try 1900px.
-        */
-        @media (min-width: 1900px) { 
-            /* .charts-grid rule from 1140px (repeat(3, ...)) is still good. */
-            .chart-container {
-                max-width: none; /* Allow charts to grow to fill the 1fr track */
-            }
-        }
     </style>
 </head>
 <body>
@@ -378,21 +369,22 @@
                     }
                 };
                 
+                // --- 修改点 1: 每日学习卡片数改为柱状图 ---
                 cardsChart = new Chart(
                     document.getElementById('cardsChart'),
                     {
-                        type: 'line',
+                        type: 'bar', // 修改 type 为 'bar'
                         data: {
                             labels: initialFilteredData.dates,
                             datasets: [{
                                 data: initialFilteredData.cards,
+                                backgroundColor: 'rgba(75, 192, 192, 0.7)', // 应用柱状图颜色
                                 borderColor: 'rgb(75, 192, 192)',
-                                backgroundColor: 'rgba(75, 192, 192, 0.1)',
-                                fill: true,
-                                borderWidth: 2
+                                borderWidth: 1,
+                                borderRadius: 4,
                             }]
                         },
-                        options: { ...commonLineOptions }
+                        options: { ...commonBarOptions } // 应用柱状图通用配置
                     }
                 );
                 
@@ -414,6 +406,7 @@
                     }
                 );
                 
+                // --- 修改点 2: 卡片平均学习时间改为无填充折线图 ---
                 avgTimeChart = new Chart(
                     document.getElementById('avgTimeChart'),
                     {
@@ -423,8 +416,7 @@
                             datasets: [{
                                 data: initialFilteredData.avgTime,
                                 borderColor: 'rgb(255, 99, 132)',
-                                backgroundColor: 'rgba(255, 99, 132, 0.1)',
-                                fill: true,
+                                fill: false, // 修改 fill 为 false
                                 borderWidth: 2
                             }]
                         },
