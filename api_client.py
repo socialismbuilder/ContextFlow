@@ -23,16 +23,16 @@ DEFAULT_PROMPT_TEMPLATE = '''
 - 句子最大长度:{sentence_length_desc}
 
 例句生成规则：
-- 难度控制原则：评估关键词 '{world}' 的固有难度，与设定的目标句子难度，生成的句子整体难度必须同时低于关键词的固有难度和设定的目标难度。
-例如：如果关键词是较为简单的词如book，远低于用户设置的目标，则应该生成简单的短句。This is a book.或This is a book.
-- 提供的关键词 '{world}' 是一个完整的词汇。它可以是原形、复数、过去式等屈折形式，或作为组合词的一部分，但不能是该词根衍生的其他词汇。
+- 提供的关键词 '{world}' 是一个完整的词汇/短语。它可以是原形、复数、过去式等屈折形式，或作为组合词的一部分，但不能是该词根衍生的其他词汇。
 （例如，如果关键词是 "book"，例句中可以使用 "books" 或 "notebook" 中的 "book" 部分，前提是notebook的book代表着原本含义）
 - 绝对禁止将关键词用作前后缀来构成一个不同的词汇，或使用与关键词同根但意义完全不同的衍生词。
 （例如，给出关键词book,例句不能使用booking;给出king，例句不能使用kingdom）
+- 若关键词是附带了某一个翻译的多义词，则例句中只能使用该翻译对应的含义。
 - 语境应尽量与学习目标 ({learning_goal}) 相关，或者为通用场景。
 - 每个例句必须包含关键词 ‘{world}’。
 {second_keywords}
 - 5个例句应尽量全面的覆盖关键词的各种用法和含义。
+- 例句和翻译必须分别是单一语言，不得双语混杂
 
 输出格式要求：
 
@@ -183,7 +183,8 @@ def get_api_response(config,formatted_prompt):
             json={
                 "model": model_name,
                 "messages": [{"role": "user", "content": formatted_prompt}],
-                "response_format": {"type": "json_object"}
+                "response_format": {"type": "json_object"},
+                "thinking": {"type": "disabled"}
             },
             timeout=30
         )
@@ -320,7 +321,8 @@ def test_api_sync(
     payload = {
         "model": model_name,
         "messages": [{"role": "user", "content": "不要有任何多余其他输出，重复一遍这个词: Hello"}],
-        "max_tokens": 50
+        "max_tokens": 50,
+        "thinking": {"type": "disabled"}
     }
 
     try:
