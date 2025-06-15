@@ -114,11 +114,9 @@ def clean_html(raw_string):
 
 
 
-def get_upcoming_cards(card):
+def get_upcoming_cards(card,deck_name):
 
     config = get_config()
-    deck_name = aqt.mw.col.decks.name(card.did)
-    #print(f"目标牌组: {deck_name}")
 
     # Initialize empty lists for keywords
     new_keywords = []
@@ -450,7 +448,7 @@ def on_card_render(html: str, card: Card, context: str) -> str:
             # --- Preloading Logic (Runs AFTER determining initial HTML) ---
             # print("DEBUG: 开始预加载逻辑...")
             try:
-                upcoming_keywords = get_upcoming_cards(card) # Call the function to get upcoming keywords
+                upcoming_keywords = get_upcoming_cards(card,base_deck_name) # Call the function to get upcoming keywords
                 # print(f"DEBUG: 预加载检查 - 待处理关键词: {upcoming_keywords}") # 添加日志
                 if upcoming_keywords:
                     with cache_lock: # Lock for safe cache access and queue adding
