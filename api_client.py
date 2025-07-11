@@ -216,7 +216,6 @@ def get_api_response(config, formatted_prompt):
                 "model": model_name,
                 "messages": [{"role": "user", "content": formatted_prompt}],
                 "response_format": {"type": "json_object"},
-                "thinking": {"type": "disabled"}
             },
             timeout=30
         )
@@ -358,7 +357,6 @@ def test_api_sync(
         "model": model_name,
         "messages": [{"role": "user", "content": "不要有任何多余其他输出，重复一遍这个词: Hello"}],
         "max_tokens": 50,
-        "thinking": {"type": "disabled"}
     }
 
     try:
