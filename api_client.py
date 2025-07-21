@@ -209,16 +209,27 @@ def get_api_response(config, formatted_prompt):
     api_key = config.get("api_key")
     model_name = config.get("model_name")
     try:
-        response = requests.post(
-            api_url,
-            headers={"Authorization": f"Bearer {api_key}"},
-            json={
-                "model": model_name,
-                "messages": [{"role": "user", "content": formatted_prompt}],
-                "response_format": {"type": "json_object"},
-            },
-            timeout=30
-        )
+        if "doubao" in model_name.lower() or "gemini" in model_name.lower() or "qwen3" in model_name.lower():
+            response = requests.post(
+                api_url,
+                headers={"Authorization": f"Bearer {api_key}"},
+                json={
+                    "model": model_name,
+                    "messages": [{"role": "user", "content": formatted_prompt}],
+                    "thinking": {"type": "disabled"}
+                },
+                timeout=30
+            )
+        else:
+            response = requests.post(
+                api_url,
+                headers={"Authorization": f"Bearer {api_key}"},
+                json={
+                    "model": model_name,
+                    "messages": [{"role": "user", "content": formatted_prompt}],
+                },
+                timeout=30
+            )
 
         response.raise_for_status()  # Raise HTTPError for bad responses (4xx or 5xx)
         return response
