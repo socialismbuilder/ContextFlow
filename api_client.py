@@ -9,6 +9,8 @@ import random
 from .config_manager import get_config
 import html
 
+support_thinking = True  #是否支持thinking参数
+
 top_difficulty_keywords = []
 # Configuration details are dynamically loaded from user settings via config_manager
 
@@ -209,7 +211,9 @@ def get_api_response(config, formatted_prompt):
     api_key = config.get("api_key")
     model_name = config.get("model_name")
     try:
-        if "doubao" in model_name.lower() or "gemini" in model_name.lower() or "qwen3" in model_name.lower():
+        global support_thinking
+
+        if support_thinking:
             response = requests.post(
                 api_url,
                 headers={"Authorization": f"Bearer {api_key}"},
@@ -231,6 +235,16 @@ def get_api_response(config, formatted_prompt):
                 timeout=30
             )
 
+        
+        if response.status_code != 200:
+            try:
+                error_json = response.json()
+                error_msg_detail = error_json.get("error", {}).get("message", response.text)
+                if 'thinking' in error_msg_detail.lower():
+                        # 如果响应中包含thinking相关内容，可能是API不支持thinking参数
+                    support_thinking = False
+            except:
+                pass
         response.raise_for_status()  # Raise HTTPError for bad responses (4xx or 5xx)
         return response
     # 出现异常print出来
@@ -364,11 +378,22 @@ def test_api_sync(
         "Content-Type": "application/json",
     }
     # 简单的prompt，要求重复一个词，并限制token数量
-    payload = {
-        "model": model_name,
-        "messages": [{"role": "user", "content": "不要有任何多余其他输出，重复一遍这个词: Hello"}],
-        "max_tokens": 50,
-    }
+    global support_thinking
+    if not support_thinking:
+        # 如果不支持thinking参数，则不包含该参数
+        payload = {
+            "model": model_name,
+            "messages": [{"role": "user", "content": "不要有任何多余其他输出，重复一遍这个词: Hello"}],
+            "max_tokens": 50
+        }
+    else:
+        # 如果支持thinking参数，则包含该参数
+        payload = {
+            "model": model_name,
+            "messages": [{"role": "user", "content": "不要有任何多余其他输出，重复一遍这个词: Hello"}],
+            "max_tokens": 50,
+            "thinking": {"type": "disabled"}
+        }
 
     try:
         response = requests.post(
@@ -378,12 +403,17 @@ def test_api_sync(
             timeout=timeout_seconds
         )
 
+
         if response.status_code != 200:
             error_msg_detail = "Unknown error"
             try:
                 # 尝试从JSON响应中获取错误信息
                 error_json = response.json()
                 error_msg_detail = error_json.get("error", {}).get("message", response.text)
+                if 'thinking' in error_msg_detail.lower():
+                    # 如果响应中包含thinking相关内容，可能是API不支持thinking参数
+                    support_thinking = False
+                    error_msg_detail = "API不支持thinking参数，已禁用思考，请重新尝试。"
             except json.JSONDecodeError:
                 # 如果响应不是JSON，则直接使用文本内容
                 error_msg_detail = response.text
