@@ -245,7 +245,7 @@ def get_api_response(config, formatted_prompt):
                     support_thinking = False
             except:
                 pass
-        response.raise_for_status()  # Raise HTTPError for bad responses (4xx or 5xx)
+        
         return response
     # 出现异常print出来
     except requests.exceptions.RequestException as e:
@@ -259,6 +259,17 @@ def get_api_response(config, formatted_prompt):
 def get_message_content(response, keyword):
     if response is None:
         return ""
+    global support_thinking
+    if response.status_code != 200:
+        try:
+            error_json = response.json()
+            error_msg_detail = error_json.get("error", {}).get("message", response.text)
+            if 'thinking' in error_msg_detail.lower():
+                    # 如果响应中包含thinking相关内容，可能是API不支持thinking参数
+                support_thinking = False
+                return f"API不支持thinking参数，已禁用思考，请重新尝试。错误详情：{error_msg_detail}"
+        except:
+                pass
     try:
         response_json = response.json()
         message_content = response_json["choices"][0]["message"]["content"]
