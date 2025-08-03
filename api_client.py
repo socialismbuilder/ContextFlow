@@ -267,7 +267,7 @@ def get_message_content(response, keyword):
             if 'thinking' in error_msg_detail.lower():
                     # 如果响应中包含thinking相关内容，可能是API不支持thinking参数
                 support_thinking = False
-                return f"API不支持thinking参数，已禁用思考，请重新尝试。错误详情：{error_msg_detail}"
+                return f"API不支持thinking参数，已禁用thinking参数，请重新尝试。错误详情：{error_msg_detail}"
         except:
                 pass
     try:
