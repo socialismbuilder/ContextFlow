@@ -17,6 +17,12 @@ from PyQt6.QtCore import QTimer
 import time
 
 
+# Custom ComboBox to ignore wheel events
+class NoWheelComboBox(QComboBox):
+    def wheelEvent(self, event):
+        # Ignore mouse wheel events to prevent them from interfering with QScrollArea
+        event.ignore()
+
 class ConfigDialog(QDialog):
     """配置对话框"""
 
@@ -72,7 +78,7 @@ class ConfigDialog(QDialog):
 
         # api供应商与url组件
         PRESET_API_URLS = current_config.get("preset_api_urls")
-        self.api_provider_combo = QComboBox()
+        self.api_provider_combo = NoWheelComboBox()
         self.api_provider_combo.addItems(PRESET_API_URLS.keys())
         api_layout.addRow("API 提供商:", self.api_provider_combo)
 
@@ -102,7 +108,7 @@ class ConfigDialog(QDialog):
         api_layout.addRow("API 密钥:", self.api_key)
 
         # 动态模型列表
-        self.model_name = QComboBox()
+        self.model_name = NoWheelComboBox()
         self.model_name.setEditable(True)
         self.model_name.setEditText(current_config.get("model_name", ""))
 
@@ -145,7 +151,7 @@ class ConfigDialog(QDialog):
         prefs_layout = QFormLayout()
 
         # 词汇量等级选择
-        self.vocab_level_combo = QComboBox()
+        self.vocab_level_combo = NoWheelComboBox()
 
         PRESET_VOCAB_LEVELS = current_config.get("preset_vocab_levels")
         self.vocab_level_combo.addItems(PRESET_VOCAB_LEVELS)
@@ -163,7 +169,7 @@ class ConfigDialog(QDialog):
         self._toggle_custom_widget(self.vocab_level_combo, self.vocab_level_custom, prefs_layout)  # 初始化可见性
 
         # 学习目标选择
-        self.learning_goal_combo = QComboBox()
+        self.learning_goal_combo = NoWheelComboBox()
 
         PRESET_LEARNING_GOALS = current_config.get("preset_learning_goals")
         self.learning_goal_combo.addItems(PRESET_LEARNING_GOALS)
@@ -181,7 +187,7 @@ class ConfigDialog(QDialog):
         self._toggle_custom_widget(self.learning_goal_combo, self.learning_goal_custom, prefs_layout)
 
         # 句子难度选择
-        self.difficulty_combo = QComboBox()
+        self.difficulty_combo = NoWheelComboBox()
 
         PRESET_DIFFICULTIES = current_config.get("preset_difficulties")
         self.difficulty_combo.addItems(PRESET_DIFFICULTIES)
@@ -200,7 +206,7 @@ class ConfigDialog(QDialog):
         self._toggle_custom_widget(self.difficulty_combo, self.difficulty_custom, prefs_layout)
 
         PRESET_LENGTHS = current_config.get("preset_lengths")
-        self.length_combo = QComboBox()
+        self.length_combo = NoWheelComboBox()
         self.length_combo.addItems(PRESET_LENGTHS)
         current_length = current_config.get("sentence_length_desc",
                                             "中等长度句 (约25-40词): 通用对话及文章常用长度")  # 修正默认值
@@ -227,7 +233,7 @@ class ConfigDialog(QDialog):
         other_layout.addRow("目标牌组名称:", self.deck_name)
 
         # 学习语言下拉选框
-        self.learning_language_combo = QComboBox()
+        self.learning_language_combo = NoWheelComboBox()
         # 常见语言列表，可以根据需要扩展
         languages = ["英语", "法语", "日语", "西班牙语", "德语", "韩语", "俄语", "意大利语", "葡萄牙语", "阿拉伯语",
                      "印地语"]
@@ -239,7 +245,7 @@ class ConfigDialog(QDialog):
             self.learning_language_combo.setCurrentText("英语")
 
         # 提示词选择下拉选框 (沿用 prompt_name_combo 作为控件名，但功能是选择提示词)
-        self.prompt_name_combo = QComboBox()
+        self.prompt_name_combo = NoWheelComboBox()
         custom_prompts = current_config.get("custom_prompts", {})
         prompt_choices = ["默认-不标记目标词", "默认-标记目标词"] + list(custom_prompts.keys())
         self.prompt_name_combo.addItems(prompt_choices)
@@ -320,7 +326,7 @@ class ConfigDialog(QDialog):
         edit_prompt_layout.addWidget(edit_prompt)
 
         # 提示词来源选择框（含存储的提示词）
-        self.prompt_source_combo = QComboBox()
+        self.prompt_source_combo = NoWheelComboBox()
         current_config = get_config()
         custom_prompts = current_config.get("custom_prompts", {})
         self.prompt_source_combo.addItems(
@@ -366,7 +372,7 @@ class ConfigDialog(QDialog):
 
         test_mode_label = QLabel("测试模式:")
         test_mode_layout.addWidget(test_mode_label)
-        self.test_mode_combo = QComboBox()
+        self.test_mode_combo = NoWheelComboBox()
         self.test_mode_combo.addItems(["生成例句", "查看提示词"])
         test_mode_layout.addWidget(self.test_mode_combo)
         test_mode_layout.addStretch()
