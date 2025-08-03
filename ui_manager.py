@@ -606,8 +606,11 @@ class ConfigDialog(QDialog):
 
             models = api_client.fetch_available_models(api_url, api_key)
             if not models:
-                QMessageBox.warning(self, "错误", "无法获取模型列表，请检查配置")
-                return
+                if force: # If it's a forced refresh and still no models
+                    QMessageBox.warning(self, "错误", "无法获取模型列表，可能是配置错误或供应商不支持查询列表")
+                    return
+                else: # If it's an initial load and no models, just return without warning
+                    return
 
             # 缓存模型列表
             self.cached_models = models
