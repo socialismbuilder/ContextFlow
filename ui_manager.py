@@ -7,7 +7,7 @@ import aqt
 from aqt.qt import (
     QDialog, QVBoxLayout, QFormLayout, QLabel, QLineEdit, QPushButton, QComboBox,
     QGroupBox, QHBoxLayout, QWidget, QDialogButtonBox, QMessageBox, QApplication,
-    QTabWidget, QTextEdit, QSplitter, Qt, QGridLayout, QCompleter
+    QTabWidget, QTextEdit, QSplitter, Qt, QGridLayout, QCompleter, QScrollArea
 )
 from .config_manager import get_config, save_config  # 使用相对导入
 from .cache_manager import clear_cache
@@ -23,8 +23,8 @@ class ConfigDialog(QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setWindowTitle("AI例句配置")
-        # self.setMinimumWidth(650) # 增加宽度以容纳提示词编辑区域
-        # self.setMinimumHeight(600) #高度自适应，不做限制
+        self.setMinimumWidth(650) # 增加宽度以容纳提示词编辑区域
+        self.setMinimumHeight(600) #高度自适应，不做限制
 
         main_layout = QVBoxLayout(self)
         current_config = get_config()
@@ -48,7 +48,10 @@ class ConfigDialog(QDialog):
         self.tab_widget.addTab(self.prompt_tab, "提示词编辑器")
 
         # 将选项卡控件添加到主布局
-        main_layout.addWidget(self.tab_widget)
+        scroll_area = QScrollArea()
+        scroll_area.setWidgetResizable(True) # Important for proper resizing
+        scroll_area.setWidget(self.tab_widget)
+        main_layout.addWidget(scroll_area)
 
         # --- API配置设置组 ---
         self.add_api_setting(basic_layout, current_config)
