@@ -3,11 +3,14 @@ import json
 import aqt
 import concurrent.futures
 import traceback
-import typing # Add typing for Optional
+import typing  # Add typing for Optional
 import re
 import random
 from .config_manager import get_config
 import html
+
+support_thinking = True  #是否支持thinking参数
+
 top_difficulty_keywords = []
 # Configuration details are dynamically loaded from user settings via config_manager
 
@@ -84,7 +87,6 @@ DEFAULT_FORMAT_HIGHLIGHT = '''
 示例仅为格式参考。语言，难度，句子长度等信息请按照生成规则。请严格按照上述要求生成。
 '''
 
-
 # --- Configuration (can be loaded from config or passed) ---
 # Default values, consider loading these dynamically
 DEFAULT_CONFIG = {
@@ -92,12 +94,12 @@ DEFAULT_CONFIG = {
     "learning_goal": "提升日常浏览英文网页与资料的流畅度",
     "difficulty_level": "中级 (B1): 并列/简单复合句，稍复杂话题，扩大词汇范围",
     "sentence_length_desc": "中等长度句 (约25-40词): 通用对话及文章常用长度",
-    "learning_language":"英语",
-    "prompt_name":"默认-不标记目标词"
+    "learning_language": "英语",
+    "prompt_name": "默认-不标记目标词"
 }
 
-def get_prompts(config):
 
+def get_prompts(config):
     custom_prompts = config.get("custom_prompts", {})
     prompt_name = config.get("prompt_name", DEFAULT_CONFIG["prompt_name"])
     if prompt_name == "默认-不标记目标词":
@@ -106,8 +108,9 @@ def get_prompts(config):
         prompt = DEFAULT_PROMPT_TEMPLATE + DEFAULT_FORMAT_HIGHLIGHT
     else:
         custom_prompts = config.get("custom_prompts", {})
-        prompt = custom_prompts.get(prompt_name,DEFAULT_PROMPT_TEMPLATE + DEFAULT_FORMAT_NORMAL)
+        prompt = custom_prompts.get(prompt_name, DEFAULT_PROMPT_TEMPLATE + DEFAULT_FORMAT_NORMAL)
     return prompt
+
 
 def clean_html(raw_string):
     """
@@ -122,6 +125,7 @@ def clean_html(raw_string):
     decoded = html.unescape(no_sound)
     cleaned = decoded.strip()
     return cleaned
+
 
 # 新增难度排名前100关键词的函数
 def get_top_difficulty_keywords():
@@ -157,7 +161,7 @@ def get_top_difficulty_keywords():
                     continue  # 跳过无记忆状态的卡片
                 difficulty = card.memory_state.difficulty
 
-                difficulty_keywords.append( (difficulty, keyword) )
+                difficulty_keywords.append((difficulty, keyword))
             except Exception as e:
                 print(f"ERROR: 处理卡片{cid}时出错: {str(e)}")
                 continue
@@ -172,45 +176,111 @@ def get_top_difficulty_keywords():
         return []
 
 
-def get_api_response(config,formatted_prompt):
+def fetch_available_models(api_url: str, api_key: str) -> list[str]:
+    """从api提供商得到所有可用的模型"""
+    if not api_url or not api_key:
+        return []
+
+    # 从url拼接models endpoint
+    endpoint = api_url
+    if "/chat/completions" in api_url:
+        endpoint = api_url.split("/chat/completions")[0] + "/models"
+    elif api_url.endswith("/completions"):
+        endpoint = api_url.rsplit("/completions", 1)[0] + "/models"
+    else:
+        endpoint = api_url.rstrip("/") + "/models"
+
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json",
+    }
+
+    try:
+        response = requests.get(endpoint, headers=headers, timeout=10)
+        response.raise_for_status()
+        data = response.json()
+        models = [m.get("id") for m in data.get("data", []) if isinstance(m, dict) and m.get("id")]
+        return models
+    except Exception as e:
+        print(f"错误：[fetch_available_models] 获取模型列表失败: {e}")
+        return []
+
+
+def get_api_response(config, formatted_prompt):
     api_url = config.get("api_url")
     api_key = config.get("api_key")
     model_name = config.get("model_name")
     try:
-        response = requests.post(
-            api_url,
-            headers={"Authorization": f"Bearer {api_key}"},
-            json={
-                "model": model_name,
-                "messages": [{"role": "user", "content": formatted_prompt}],
-                "response_format": {"type": "json_object"},
-                "thinking": {"type": "disabled"}
-            },
-            timeout=30
-        )
+        global support_thinking
 
-        response.raise_for_status() # Raise HTTPError for bad responses (4xx or 5xx)
+        if support_thinking:
+            response = requests.post(
+                api_url,
+                headers={"Authorization": f"Bearer {api_key}"},
+                json={
+                    "model": model_name,
+                    "messages": [{"role": "user", "content": formatted_prompt}],
+                    "thinking": {"type": "disabled"}
+                },
+                timeout=30
+            )
+        else:
+            response = requests.post(
+                api_url,
+                headers={"Authorization": f"Bearer {api_key}"},
+                json={
+                    "model": model_name,
+                    "messages": [{"role": "user", "content": formatted_prompt}],
+                },
+                timeout=30
+            )
+
+        
+        if response.status_code != 200:
+            try:
+                error_json = response.json()
+                error_msg_detail = error_json.get("error", {}).get("message", response.text)
+                if 'thinking' in error_msg_detail.lower():
+                        # 如果响应中包含thinking相关内容，可能是API不支持thinking参数
+                    support_thinking = False
+            except:
+                pass
+        
         return response
-    #出现异常print出来
+    # 出现异常print出来
     except requests.exceptions.RequestException as e:
         print(f"错误：[get_api_response] 网络错误：{e}")
         return None
-    except Exception as e: # Catch other unexpected errors during the process
+    except Exception as e:  # Catch other unexpected errors during the process
         print(f"错误：[get_api_response] 意外错误：{type(e).__name__} - {e}")
         return None
 
-def get_message_content(response,keyword):
+
+def get_message_content(response, keyword):
     if response is None:
         return ""
+    global support_thinking
+    if response.status_code != 200:
+        try:
+            error_json = response.json()
+            error_msg_detail = error_json.get("error", {}).get("message", response.text)
+            if 'thinking' in error_msg_detail.lower():
+                    # 如果响应中包含thinking相关内容，可能是API不支持thinking参数
+                support_thinking = False
+                return f"API不支持thinking参数，已禁用thinking参数，请重新尝试。错误详情：{error_msg_detail}"
+        except:
+                pass
     try:
         response_json = response.json()
         message_content = response_json["choices"][0]["message"]["content"]
         return message_content
     except (KeyError, IndexError, json.JSONDecodeError) as e:
-        print(f"错误：[get_message_content] 无法从API响应中提取/解析内容，关键词：'{keyword}'。错误：{e}。响应文本：{response.text[:500]}")
+        print(
+            f"错误：[get_message_content] 无法从API响应中提取/解析内容，关键词：'{keyword}'。错误：{e}。响应文本：{response.text[:500]}")
         return ""
-        #用户不应该看到报错，raise都注释掉
-        #raise ValueError(f"API响应格式错误：{e}") from e
+        # 用户不应该看到报错，raise都注释掉
+        # raise ValueError(f"API响应格式错误：{e}") from e
+
 
 def parse_message_content_to_sentence_pairs(message_content: str, keyword: str) -> list:
     """
@@ -225,14 +295,15 @@ def parse_message_content_to_sentence_pairs(message_content: str, keyword: str) 
         content_json = json.loads(cleaned_content)
         raw_pairs = content_json.get("sentences")
     except json.JSONDecodeError:
-        print(f"错误：[parse_message_content_to_sentence_pairs] 关键字'{keyword}'的响应非JSON格式：{message_content[:200]}")
+        print(
+            f"错误：[parse_message_content_to_sentence_pairs] 关键字'{keyword}'的响应非JSON格式：{message_content[:200]}")
         return []
-    
+
     # 验证sentences字段类型
     if not isinstance(raw_pairs, list):
         print(f"错误：[parse_message_content_to_sentence_pairs] 关键字'{keyword}'未找到有效sentences列表")
         return []
-    
+
     # 验证每个句子对格式
     valid_pairs = []
     for pair in raw_pairs:
@@ -240,14 +311,14 @@ def parse_message_content_to_sentence_pairs(message_content: str, keyword: str) 
             valid_pairs.append(pair)
         else:
             print(f"警告：[parse_message_content_to_sentence_pairs] 关键字'{keyword}'跳过无效配对：{pair}")
-    
+
     if not valid_pairs:
         print(f"警告：[parse_message_content_to_sentence_pairs] 关键字'{keyword}'未找到有效句子对")
-    
+
     return valid_pairs
 
 
-def generate_ai_sentence(config, keyword,prompt = None):
+def generate_ai_sentence(config, keyword, prompt=None):
     """
     同步调用AI接口生成包含关键词的例句。
     直接返回例句对列表（[[英文, 中文], ...]）或在出错时抛出异常。
@@ -260,10 +331,11 @@ def generate_ai_sentence(config, keyword,prompt = None):
         second_keywords_str = ""
     else:
         # 随机选取10个作为第二关键词（不足10个则全选）
-        second_keywords = random.sample(top_difficulty_keywords, 10) if len(top_difficulty_keywords)>=10 else top_difficulty_keywords
+        second_keywords = random.sample(top_difficulty_keywords, 10) if len(
+            top_difficulty_keywords) >= 10 else top_difficulty_keywords
         # 转换为逗号分隔的字符串格式
         second_keywords_str = ", ".join(second_keywords)
-        second_keywords_str = "- 在保证句子流畅的前提下，可以在每个例句中尝试融入若干以下词汇（"+second_keywords_str+"），不限制每句融入几个，也不强制融入，但必须以句子自然流畅为前提。"
+        second_keywords_str = "- 在保证句子流畅的前提下，可以在每个例句中尝试融入若干以下词汇（" + second_keywords_str + "），不限制每句融入几个，也不强制融入，但必须以句子自然流畅为前提。"
 
     vocab_level = config.get("vocab_level", DEFAULT_CONFIG["vocab_level"])
     learning_goal = config.get("learning_goal", DEFAULT_CONFIG["learning_goal"])
@@ -281,33 +353,32 @@ def generate_ai_sentence(config, keyword,prompt = None):
         learning_goal=learning_goal,
         difficulty_level=difficulty_level,
         sentence_length_desc=sentence_length_desc,
-        language = learning_language,
+        language=learning_language,
         second_keywords=second_keywords_str
     )
-    #print("格式化提示词")
-    #print(second_keywords_str)
+    # print("格式化提示词")
+    # print(second_keywords_str)
 
     try:
-        response = get_api_response(config,formatted_prompt)
+        response = get_api_response(config, formatted_prompt)
         message_content = get_message_content(response, keyword)
         sentence_pairs = parse_message_content_to_sentence_pairs(message_content, keyword)
         if not sentence_pairs:
-            return [] # Return empty list if no valid pairs
+            return []  # Return empty list if no valid pairs
 
-        return sentence_pairs # Return list of lists [[en, cn], ...]
+        return sentence_pairs  # Return list of lists [[en, cn], ...]
 
-    except Exception as e: # Catch other unexpected errors during the process
+    except Exception as e:  # Catch other unexpected errors during the process
         print(f"错误：[generate_ai_sentence] 关键字 '{keyword}' 出现意外错误：{type(e).__name__} - {e}")
         traceback.print_exc()
 
 
-
 # 新的同步测试函数，替代之前的异步流式版本
 def test_api_sync(
-    api_url: str,
-    api_key: str,
-    model_name: str,
-    timeout_seconds: int = 30
+        api_url: str,
+        api_key: str,
+        model_name: str,
+        timeout_seconds: int = 30
 ) -> tuple[typing.Optional[str], typing.Optional[str]]:
     """
     通过同步、非流式请求测试API连接。
@@ -318,12 +389,22 @@ def test_api_sync(
         "Content-Type": "application/json",
     }
     # 简单的prompt，要求重复一个词，并限制token数量
-    payload = {
-        "model": model_name,
-        "messages": [{"role": "user", "content": "不要有任何多余其他输出，重复一遍这个词: Hello"}],
-        "max_tokens": 50,
-        "thinking": {"type": "disabled"}
-    }
+    global support_thinking
+    if not support_thinking:
+        # 如果不支持thinking参数，则不包含该参数
+        payload = {
+            "model": model_name,
+            "messages": [{"role": "user", "content": "不要有任何多余其他输出，重复一遍这个词: Hello"}],
+            "max_tokens": 50
+        }
+    else:
+        # 如果支持thinking参数，则包含该参数
+        payload = {
+            "model": model_name,
+            "messages": [{"role": "user", "content": "不要有任何多余其他输出，重复一遍这个词: Hello"}],
+            "max_tokens": 50,
+            "thinking": {"type": "disabled"}
+        }
 
     try:
         response = requests.post(
@@ -333,30 +414,35 @@ def test_api_sync(
             timeout=timeout_seconds
         )
 
+
         if response.status_code != 200:
             error_msg_detail = "Unknown error"
             try:
                 # 尝试从JSON响应中获取错误信息
                 error_json = response.json()
                 error_msg_detail = error_json.get("error", {}).get("message", response.text)
+                if 'thinking' in error_msg_detail.lower():
+                    # 如果响应中包含thinking相关内容，可能是API不支持thinking参数
+                    support_thinking = False
+                    error_msg_detail = "API不支持thinking参数，已禁用思考，请重新尝试。"
             except json.JSONDecodeError:
                 # 如果响应不是JSON，则直接使用文本内容
                 error_msg_detail = response.text
-            return None, f"API错误 {response.status_code}: {error_msg_detail[:200]}" # 限制错误信息长度
+            return None, f"API错误 {response.status_code}: {error_msg_detail[:200]}"  # 限制错误信息长度
 
         response_json = response.json()
 
         # 提取内容 - 这种结构对于类OpenAI的API是常见的
         # 如果目标API具有不同的响应结构，请进行调整
         if response_json.get("choices") and \
-           isinstance(response_json["choices"], list) and \
-           len(response_json["choices"]) > 0 and \
-           response_json["choices"][0].get("message") and \
-           isinstance(response_json["choices"][0]["message"], dict) and \
-           response_json["choices"][0]["message"].get("content"):
+                isinstance(response_json["choices"], list) and \
+                len(response_json["choices"]) > 0 and \
+                response_json["choices"][0].get("message") and \
+                isinstance(response_json["choices"][0]["message"], dict) and \
+                response_json["choices"][0]["message"].get("content"):
 
             content = response_json["choices"][0]["message"]["content"]
-            return content.strip(), None # 返回提取到的内容
+            return content.strip(), None  # 返回提取到的内容
         else:
             # 如果结构不同或内容缺失，则回退
             # 如果解析失败，尝试返回原始文本或其一部分
@@ -365,14 +451,14 @@ def test_api_sync(
 
     except requests.exceptions.Timeout:
         return None, f"请求在 {timeout_seconds} 秒后超时。"
-    except requests.exceptions.RequestException as e: # 其他 requests 库的异常
+    except requests.exceptions.RequestException as e:  # 其他 requests 库的异常
         return None, f"HTTP请求错误: {str(e)}"
     except json.JSONDecodeError:
         # 如果API没有返回JSON，但状态码是200，可能是纯文本
         if response and response.status_code == 200 and response.text:
-             return response.text[:50], None # 返回纯文本的前50个字符
+            return response.text[:50], None  # 返回纯文本的前50个字符
         return None, "无法从API解码JSON响应。"
-    except Exception as e: # 其他意外错误
+    except Exception as e:  # 其他意外错误
         # import traceback
         # traceback.print_exc() # 用于调试
         return None, f"发生意外错误: {str(e)}"
