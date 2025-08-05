@@ -7,7 +7,7 @@ import aqt
 from aqt.qt import (
     QDialog, QVBoxLayout, QFormLayout, QLabel, QLineEdit, QPushButton, QComboBox,
     QGroupBox, QHBoxLayout, QWidget, QDialogButtonBox, QMessageBox, QApplication,
-    QTabWidget, QTextEdit, QSplitter, Qt,QGridLayout
+    QTabWidget, QTextEdit, Qt,QGridLayout,QCompleter, QScrollArea
 )
 from .config_manager import get_config, save_config  # 使用相对导入
 from .cache_manager import clear_cache

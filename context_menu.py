@@ -76,33 +76,46 @@ def on_webview_context_menu(webview, menu):
         if menu.actions():
             menu.addSeparator()
         
-        # 创建生成例句的菜单项
-        action = QAction(f'为 "{selected_word}" 生成例句', menu)
-        action.triggered.connect(lambda: generate_sentences_for_word(selected_word))
-        menu.addAction(action)
+        # 添加新的菜单项
+        # 1. 刷新例句
+        refresh_action = QAction(f'刷新例句', menu)
+        refresh_action.triggered.connect(lambda: refresh_example_sentences(selected_word))
+        menu.addAction(refresh_action)
+        
+        # 2. 存储例句
+        store_action = QAction(f'存储例句', menu)
+        store_action.triggered.connect(lambda: store_example_sentences(selected_word))
+        menu.addAction(store_action)
+        
+        # 3. AI详细解释
+        explain_action = QAction(f'AI详细解释 "{selected_word}"', menu)
+        explain_action.triggered.connect(lambda: explain_word_with_ai(selected_word))
+        menu.addAction(explain_action)
         
     except Exception as e:
         print(f"ERROR: 处理右键菜单时出错: {e}")
 
-def generate_sentences_for_word(word):
+# 新增的函数
+def refresh_example_sentences(word):
     """
-    为选中的词汇生成例句
+    刷新例句
     """
-    try:
-        # 检查词汇是否有效
-        if not is_valid_word(word):
-            aqt.utils.showInfo("选中的文本不是有效的词汇")
-            return
-        
-        # 导入例句生成器（延迟导入避免循环依赖）
-        from . import word_sentence_generator
-        
-        # 调用例句生成器
-        word_sentence_generator.show_sentence_generation_dialog(word)
-        
-    except Exception as e:
-        print(f"ERROR: 生成例句时出错: {e}")
-        aqt.utils.showInfo(f"生成例句时出错: {str(e)}")
+    print(f"测试：刷新例句 for {word}")
+    # 在这里实现详细的刷新例句逻辑
+
+def store_example_sentences(word):
+    """
+    存储例句
+    """
+    print(f"测试：存储例句 for {word}")
+    # 在这里实现详细的存储例句逻辑
+
+def explain_word_with_ai(word):
+    """
+    用AI详细解释词汇
+    """
+    print(f"测试：AI详细解释 for {word}")
+    # 在这里实现用AI详细解释词汇的逻辑
 
 def register_context_menu():
     """
