@@ -6,8 +6,7 @@ import aqt
 from aqt import mw
 from aqt.qt import QAction, QMenu
 from anki.hooks import addHook
-from .config_manager import get_word_selection_config
-
+from .config_manager import get_config
 # 全局变量存储选中的词汇
 selected_word = ""
 
@@ -51,49 +50,49 @@ def on_webview_context_menu(webview, menu):
     处理网页视图的右键菜单事件
     """
     global selected_word
-    
-    # 检查功能是否启用
-    config = get_word_selection_config()
-    if not config.get("enabled", True):
-        return
-    
-    # 获取选中的文本
-    try:
-        # 通过JavaScript获取选中文本
-        selected_text = webview.selectedText()
-        if not selected_text:
-            return
-        
-        # 清理选中的文本
-        cleaned_text = clean_selected_text(selected_text)
-        if not is_valid_word(cleaned_text):
-            return
-        
-        # 存储选中的词汇
-        selected_word = cleaned_text
-        
-        # 添加分隔符（如果菜单不为空）
-        if menu.actions():
-            menu.addSeparator()
-        
-        # 添加新的菜单项
-        # 1. 刷新例句
-        refresh_action = QAction(f'刷新例句', menu)
-        refresh_action.triggered.connect(lambda: refresh_example_sentences(selected_word))
-        menu.addAction(refresh_action)
-        
-        # 2. 存储例句
-        store_action = QAction(f'存储例句', menu)
-        store_action.triggered.connect(lambda: store_example_sentences(selected_word))
-        menu.addAction(store_action)
-        
-        # 3. AI详细解释
-        explain_action = QAction(f'AI详细解释 "{selected_word}"', menu)
-        explain_action.triggered.connect(lambda: explain_word_with_ai(selected_word))
-        menu.addAction(explain_action)
-        
-    except Exception as e:
-        print(f"ERROR: 处理右键菜单时出错: {e}")
+    current_deck = mw.col.decks.name(mw.reviewer.card.did)
+    config = get_config()
+    config_deck_name = config.get("deck_name")
+    field_index_match = re.search(r'\[(\d+)\]$', config_deck_name)
+    base_deck_name = re.sub(r'\[\d+\]$', '', config_deck_name) if field_index_match else config_deck_name
+    if (current_deck == base_deck_name or current_deck.startswith(base_deck_name + "::")):
+        # 获取选中的文本
+        try:
+            # 通过JavaScript获取选中文本
+            selected_text = webview.selectedText()
+            if not selected_text:
+                return
+            
+            # 清理选中的文本
+            cleaned_text = clean_selected_text(selected_text)
+            if not is_valid_word(cleaned_text):
+                return
+            
+            # 存储选中的词汇
+            selected_word = cleaned_text
+            
+            # 添加分隔符（如果菜单不为空）
+            if menu.actions():
+                menu.addSeparator()
+            
+            # 添加新的菜单项
+            # 1. 刷新例句
+            refresh_action = QAction(f'刷新例句', menu)
+            refresh_action.triggered.connect(lambda: refresh_example_sentences(selected_word))
+            menu.addAction(refresh_action)
+            
+            # 2. 存储例句
+            store_action = QAction(f'存储例句', menu)
+            store_action.triggered.connect(lambda: store_example_sentences(selected_word))
+            menu.addAction(store_action)
+            
+            # 3. AI详细解释
+            explain_action = QAction(f'AI详细解释 "{selected_word}"', menu)
+            explain_action.triggered.connect(lambda: explain_word_with_ai(selected_word))
+            menu.addAction(explain_action)
+            
+        except Exception as e:
+            print(f"ERROR: 处理右键菜单时出错: {e}")
 
 # 新增的函数
 def refresh_example_sentences(word):
