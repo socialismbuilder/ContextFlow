@@ -149,7 +149,7 @@ def get_upcoming_cards(card,deck_name):
             #print("缓存中未找到该词")
     else:
         #print("未获取缓存")
-        # 缓存不存在，执行同步排序并显示进度条
+        # 缓存不存在，启动异步排序并显示进度条
         new_query = f"deck:{deck_name} is:new"
         all_new_card_ids = mw.col.find_cards(new_query)  # 获取所有新卡片ID
         all_new_cards = [mw.col.get_card(cid) for cid in all_new_card_ids]  # 提前获取卡片对象
@@ -159,25 +159,66 @@ def get_upcoming_cards(card,deck_name):
             immediate=True,
             label="正在排序新卡片...",
             min=0,
-            max=0 # 不显示具体进度，只显示加载状态
+            max=100
         )
         
-        # 同步排序
-        sorted_new_cards = sorted(all_new_cards, key=lambda c: c.due)
-        
-        # 处理排序后的卡片，生成并缓存关键词
-        upcoming_cards_cache.clear()
-        for c in sorted_new_cards:
-            raw_keyword = c.note().fields[0] if c.note().fields else ""
-            keyword = clean_html(raw_keyword)
-            if keyword:  # 过滤空关键词
-                upcoming_cards_cache.append(keyword)
-        
-        mw.progress.finish() # 排序完成后关闭进度条
+        # 定义异步排序任务
+        def async_sort():
+            return sorted(all_new_cards, key=lambda c: c.due)  # 按due升序排序
 
-        # 初始加载时取前三个关键词作为new_keywords
-        new_keywords = upcoming_cards_cache[:3]
-        #print("从排序结果中取出三个新词")
+        # 提交到高优先级线程池
+        future = high_prio_executor.submit(async_sort)
+        
+        # 使用QTimer轮询排序状态
+        timer = QTimer()
+        start_time = time.time()
+        max_wait = 30  # 最大等待30秒
+
+        def check_sort_complete():
+            nonlocal timer
+            if future.done():
+                timer.stop()
+                mw.progress.finish()
+                try:
+                    sorted_new_cards = future.result()
+                    # 处理排序后的卡片，生成并缓存关键词
+                    upcoming_cards_cache.clear()
+                    for c in sorted_new_cards:
+                        raw_keyword = c.note().fields[0] if c.note().fields else ""
+                        keyword = clean_html(raw_keyword)
+                        if keyword:  # 过滤空关键词
+                            upcoming_cards_cache.append(keyword)
+                    # 初始加载时取前三个关键词作为new_keywords
+                    nonlocal new_keywords
+                    new_keywords = upcoming_cards_cache[:3]
+                except Exception as e:
+                    print(f"排序过程中发生错误: {str(e)}")
+                    new_keywords = []
+                return
+
+            # 进度条更新（简单线性进度）
+            elapsed = time.time() - start_time
+            progress = int((elapsed / max_wait) * 100)
+            global Occupy_bar
+            if not Occupy_bar:
+                mw.progress.update(
+                    label=f"正在排序新卡片... ({min(int(elapsed), max_wait)}秒/{max_wait}秒)",
+                    value=min(progress, 100)
+                )
+            print(future.done())
+
+            # 超时处理
+            if elapsed >= max_wait:
+                timer.stop()
+                mw.progress.finish()
+                print("警告：新卡片排序超时")
+                new_keywords = []
+
+        # 启动定时器检查排序状态（每100ms检查一次）
+        timer.timeout.connect(check_sort_complete)
+        timer.start(100)
+    
+    print(new_keywords)
 
     # Get 3 learning cards
     learning_query = f"deck:{deck_name} is:learn"
@@ -470,7 +511,15 @@ def start_worker():
 def stop_worker():
     """停止后台例句生成工作线程（两个线程池和管理器）"""
     global high_prio_executor, low_prio_executor, manager_thread
-    
+
+    # 取消注册选中词汇例句生成功能的右键菜单
+    try:
+        from . import context_menu
+        context_menu.unregister_context_menu()
+        print("DEBUG: 选中词汇例句生成功能已停用")
+    except Exception as e:
+        print(f"ERROR: 取消注册选中词汇例句生成功能失败: {e}")
+
     print("DEBUG: Stopping sentence worker manager and thread pools...")
     stop_event.set() # 通知 _sentence_worker_manager 停止
 
@@ -516,4 +565,13 @@ def register_hooks():
     gui_hooks.profile_will_close.append(stop_worker) # 注册停止函数
     gui_hooks.profile_did_open.append(start_worker)
     gui_hooks.stats_dialog_will_show.append(add_stats) # 添加统计钩子
+
+    # 注册选中词汇例句生成功能的右键菜单
+    try:
+        from . import context_menu
+        context_menu.register_context_menu()
+        print("DEBUG: 选中词汇例句生成功能已启用")
+    except Exception as e:
+        print(f"ERROR: 注册选中词汇例句生成功能失败: {e}")
+
     start_worker() # 启动工作线程
