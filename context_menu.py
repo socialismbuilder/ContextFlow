@@ -109,12 +109,14 @@ def store_example_sentences(word):
     print(f"测试：存储例句 for {word}")
     # 在这里实现详细的存储例句逻辑
 
+from .ai_explanation_dialog import AIExplanationDialog # 导入AIExplanationDialog
+
 def explain_word_with_ai(word):
     """
     用AI详细解释词汇
     """
-    print(f"测试：AI详细解释 for {word}")
-    # 在这里实现用AI详细解释词汇的逻辑
+    dialog = AIExplanationDialog(mw.app.activeWindow(), word)
+    dialog.exec()
 
 def register_context_menu():
     """
