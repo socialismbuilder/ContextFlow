@@ -9,7 +9,6 @@ import threading
 import queue
 import markdown
 
-# 假设这个函数存在
 from .config_manager import get_config
 
 # --- 深色主题样式 ---
@@ -84,7 +83,7 @@ class MessageBubble(QWidget):
 
         # 【优化】设置最小高度和最大宽度
         self.text_display.setMinimumHeight(40) 
-        self.text_display.setMaximumWidth(int(parent_dialog.width() * 0.75))
+        self.text_display.setFixedWidth(int(parent_dialog.width() * 0.75))
         
         if sender == "user":
             self.text_display.setPlainText(text)
@@ -117,7 +116,7 @@ class MessageBubble(QWidget):
         # 使用 sizeHint 来获取理想的高度，更加可靠
         doc_height = self.text_display.document().size().height()
         # 增加一些内边距缓冲
-        new_height = max(40, int(doc_height) + 10) 
+        new_height = max(50, int(doc_height) + 30) 
         self.text_display.setFixedHeight(new_height)
 
 class AIExplanationDialog(QDialog):
@@ -191,8 +190,7 @@ class AIExplanationDialog(QDialog):
         ))
 
     def start_explanation(self):
-        system_prompt = (f"你是一个专业的词汇解释助手。请详细解释词汇 '{self.word_to_explain}'，包括其定义、用法、例句、同义词、反义词等。"
-                         f"请以清晰、结构化的方式呈现。请务必使用Markdown格式输出，可以灵活使用表格（table）、代码块（code blocks）、列表等来增强可读性。")
+        system_prompt = (f"你是一个专业的词汇解释助手。请详细解释词汇 '{self.word_to_explain}'，包括其定义、用法、例句、同义词、反义词等。")
         self.conversation_history = [{"role": "system", "content": system_prompt}]
         self.send_message_to_ai()
 
