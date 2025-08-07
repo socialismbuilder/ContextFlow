@@ -3,6 +3,7 @@
     "api_key": "",
     "model_name": "deepseek-v3-250324",
     "deck_name": "这里填写目标牌组",
+    "save_deck": "这里填写收藏例句的牌组",
     "vocab_level": "大学英语四级 CET-4 (4000词)",
     "learning_goal": "提升日常浏览英文网页与资料的流畅度",
     "difficulty_level": "中级 (B1): 并列/简单复合句，稍复杂话题，扩大词汇范围",

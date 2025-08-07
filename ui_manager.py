@@ -230,6 +230,9 @@ class ConfigDialog(QDialog):
         self.deck_name = QLineEdit(current_config.get("deck_name", ""))
         other_layout.addRow("目标牌组名称:", self.deck_name)
 
+        self.save_deck = QLineEdit(current_config.get("save_deck", "这里填写收藏例句的牌组"))
+        other_layout.addRow("收藏牌组名称:", self.save_deck)
+
         # 学习语言下拉选框
         self.learning_language_combo = NoWheelComboBox()
         # 常见语言列表，可以根据需要扩展
@@ -801,6 +804,7 @@ class ConfigDialog(QDialog):
             "api_key": self.api_key.text(),
             "model_name": self.model_name.currentText(),
             "deck_name": self.deck_name.text(),
+            "save_deck": self.save_deck.text(),
             "vocab_level": self._get_combo_value(self.vocab_level_combo, getattr(self, 'vocab_level_custom', None)),
             "learning_goal": self._get_combo_value(self.learning_goal_combo, getattr(self, 'learning_goal_custom', None)),
             "difficulty_level": self._get_combo_value(self.difficulty_combo, getattr(self, 'difficulty_custom', None)),
