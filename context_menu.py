@@ -7,6 +7,7 @@ from aqt import mw
 from aqt.qt import QAction, QMenu
 from anki.hooks import addHook
 from .config_manager import get_config
+
 # 全局变量存储选中的词汇
 selected_word = ""
 
@@ -88,8 +89,11 @@ def on_webview_context_menu(webview, menu):
             
             # 3. AI详细解释
             explain_action = QAction(f'AI详细解释 "{selected_word}"', menu)
-            explain_action.triggered.connect(lambda: explain_word_with_ai(selected_word))
+            from . import main_logic
+            sentence = main_logic.showing_sentence
+            explain_action.triggered.connect(lambda: explain_word_with_ai(sentence, selected_word))
             menu.addAction(explain_action)
+            
             
         except Exception as e:
             print(f"ERROR: 处理右键菜单时出错: {e}")
@@ -111,11 +115,11 @@ def store_example_sentences(word):
 
 from .ai_explanation_dialog import AIExplanationDialog # 导入AIExplanationDialog
 
-def explain_word_with_ai(word):
+def explain_word_with_ai(sentence, word):
     """
     用AI详细解释词汇
     """
-    dialog = AIExplanationDialog(mw.app.activeWindow(), word)
+    dialog = AIExplanationDialog(mw.app.activeWindow(), sentence, word)
     dialog.exec()
 
 def register_context_menu():

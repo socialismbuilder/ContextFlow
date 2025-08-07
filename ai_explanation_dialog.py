@@ -120,8 +120,9 @@ class MessageBubble(QWidget):
         self.text_display.setFixedHeight(new_height)
 
 class AIExplanationDialog(QDialog):
-    def __init__(self, parent, word_to_explain: str):
+    def __init__(self, parent, sentence: str, word_to_explain: str):
         super().__init__(parent)
+        self.sentence = sentence
         self.word_to_explain = word_to_explain
         self.config = get_config()
         self.api_url = self.config.get("api_url")
@@ -190,7 +191,7 @@ class AIExplanationDialog(QDialog):
         ))
 
     def start_explanation(self):
-        system_prompt = (f"你是一个专业的词汇解释助手。请详细解释词汇 '{self.word_to_explain}'，包括其定义、用法、例句、同义词、反义词等。")
+        system_prompt = (f"你是一个专业的词汇解释助手。用户对{self.sentence}例句中的，'{self.word_to_explain}'这部分感到困惑，请你给用户详细解释。")
         self.conversation_history = [{"role": "system", "content": system_prompt}]
         self.send_message_to_ai()
 
