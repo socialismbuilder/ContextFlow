@@ -72,6 +72,8 @@ def on_webview_context_menu(webview, menu):
             if menu.actions():
                 menu.addSeparator()
             
+            from . import main_logic
+
             # 添加新的菜单项
             # 1. 刷新例句
             refresh_action = QAction(f'刷新例句', menu)
@@ -84,11 +86,9 @@ def on_webview_context_menu(webview, menu):
             menu.addAction(store_action)
             
             # 3. AI详细解释
-            from . import main_logic
-            sentence = main_logic.showing_sentence
             if selected_word:
                 explain_action = QAction(f'AI详细解释 "{selected_word}"', menu)
-                explain_action.triggered.connect(lambda: explain_word_with_ai(sentence, selected_word))
+                explain_action.triggered.connect(lambda: explain_word_with_ai(main_logic.showing_sentence, selected_word))
                 menu.addAction(explain_action)
             
             
