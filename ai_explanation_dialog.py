@@ -86,7 +86,7 @@ class MessageBubble(QWidget):
 
     def _adjust_main_text_height(self):
         doc_height = self.text_display.document().size().height()
-        self.text_display.setFixedHeight(int(doc_height) + 10)
+        self.text_display.setFixedHeight(int(doc_height) + 30)
         
     def set_main_html(self, html: str):
         self.text_display.setHtml(html)
@@ -267,7 +267,11 @@ class AIExplanationDialog(QDialog):
     def _stream_api_response(self):
         # 此函数逻辑不变
         headers = {"Authorization": f"Bearer {self.api_key}", "Content-Type": "application/json"}
-        payload = {"model": self.model_name, "messages": self.conversation_history, "stream": True}
+        from . import api_client
+        if api_client.support_thinking:
+            payload = {"model": self.model_name, "messages": self.conversation_history, "stream": True,"thinking": {"type": "disabled"}}
+        else:
+            payload = {"model": self.model_name, "messages": self.conversation_history, "stream": True}
         try:
             response = requests.post(self.api_url, headers=headers, json=payload, stream=True, timeout=60)
             response.raise_for_status()
