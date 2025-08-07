@@ -47,22 +47,131 @@ def get_or_create_note_type():
         # 添加卡片模板
         template = mw.col.models.new_template("例句翻译卡片")
         template['qfmt'] = '''
-<div style="text-align: center; font-size: 18px; margin: 20px;">
-    <div style="color: #666; font-size: 14px; margin-bottom: 10px;">例句</div>
-    <div style="font-size: 20px; line-height: 1.4;">{{例句}}</div>
+<style>
+    .card-group {
+        border: 1px solid rgba(0, 0, 0, 0.1);
+        border-radius: 8px;
+        padding: 15px;
+        margin-bottom: 15px;
+        background: rgba(0, 0, 0, 0.03);
+        box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+        text-align: left; /* 新增：设置文本左对齐 */
+    }
+    .night_mode .card-group {
+        border: 1px solid rgba(0, 0, 0, 0.2);
+        background: rgba(0, 0, 0, 0.1);
+    }
+    .label {
+        font-size: 14px;
+        color: #aaa;
+        margin-bottom: 5px;
+        text-transform: uppercase;
+    }
+    .night_mode .label {
+        color: #777;
+    }
+    .card-text {
+        font-size: 36px;
+        font-weight: bold;
+        line-height: 1.3;
+        margin-bottom: 10px;
+        color: black;
+    }
+    .night_mode .card-text {
+        color: white;
+    }
+    .highlight {
+        border-radius:8px; 
+        background-color:rgba(255, 150, 150, 0.7); 
+        padding:4px 8px;
+    }
+    .translation-placeholder-line {
+        height:18px; 
+        width:80%;
+        background:#e0e0e0;
+        border-radius:9px; 
+        margin:0 0 8px 0;
+    }
+    .translation-placeholder-line:last-child {
+        width:55%;
+        margin:0 0 0 0;
+    }
+    .night_mode .translation-placeholder-line {
+        background: rgba(128, 128, 128, 0.7);
+    }
+</style>
+<div style="margin: 10px;">
+    <div class="card-group">
+        <div class="label">例句</div>
+        <div class="card-text">{{例句}}</div>
+
+        <div class="label" style="margin-top: 15px;">翻译</div>
+        <div class="card-text" style="line-height: 1.4; opacity: 0.9;">
+            <div class="translation-placeholder-line"></div>
+            <div class="translation-placeholder-line"></div>
+        </div>
+    </div>
 </div>
 '''
         template['afmt'] = '''
-<div style="text-align: center; font-size: 18px; margin: 20px;">
-    <div style="color: #666; font-size: 14px; margin-bottom: 10px;">例句</div>
-    <div style="font-size: 20px; line-height: 1.4;">{{例句}}</div>
-    
-    <div style="margin-top: 20px;">
-        <div style="color: #666; font-size: 14px; margin-bottom: 5px;">翻译</div>
-        <div style="font-size: 16px; color: #333;">{{翻译}}</div>
+<style>
+    .card-group {
+        border: 1px solid rgba(0, 0, 0, 0.1);
+        border-radius: 8px;
+        padding: 15px;
+        margin-bottom: 15px;
+        background: rgba(0, 0, 0, 0.03);
+        box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+        text-align: left; /* 新增：设置文本左对齐 */
+    }
+    .night_mode .card-group {
+        border: 1px solid rgba(0, 0, 0, 0.2);
+        background: rgba(0, 0, 0, 0.1);
+    }
+    .label {
+        font-size: 14px;
+        color: #aaa;
+        margin-bottom: 5px;
+        text-transform: uppercase;
+    }
+    .night_mode .label {
+        color: #777;
+    }
+    .card-text {
+        font-size: 36px;
+        font-weight: bold;
+        line-height: 1.3;
+        margin-bottom: 10px;
+        color: black;
+    }
+    .night_mode .card-text {
+        color: white;
+    }
+    .highlight {
+        border-radius:8px; 
+        background-color:rgba(255, 150, 150, 0.7); 
+        padding:4px 8px;
+    }
+    .original-card-text {
+        font-size: 24px;
+        line-height: 1.4;
+        opacity: 0.8;
+        color: black;
+    }
+    .night_mode .original-card-text {
+        color: white;
+    }
+</style>
+<div style="margin: 10px; position: relative; min-height: 200px;">
+    <div class="card-group">
+        <div class="label">例句</div>
+        <div class="card-text">{{例句}}</div>
+
+        <div class="label" style="margin-top: 15px;">翻译</div>
+        <div class="card-text" style="line-height: 1.4; opacity: 0.9;">{{翻译}}</div>
     </div>
-    
-    <div style="margin-top: 15px; font-size: 12px; color: #999;">{{来源}}</div>
+
+    <div style="position: absolute; bottom: 10px; right: 10px; font-size: 10px; color: #999;">{{来源}}</div>
 </div>
 '''
         
