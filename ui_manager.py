@@ -49,14 +49,9 @@ class ConfigDialog(QDialog):
         self.prompt_tab = QWidget()
         prompt_layout = QVBoxLayout(self.prompt_tab)
 
-        # 创建选中词汇例句生成选项卡
-        self.word_selection_tab = QWidget()
-        word_selection_layout = QVBoxLayout(self.word_selection_tab)
-
         # 添加选项卡到选项卡控件
         self.tab_widget.addTab(self.basic_tab, "基本设置")
         self.tab_widget.addTab(self.prompt_tab, "提示词编辑器")
-        self.tab_widget.addTab(self.word_selection_tab, "选中词汇例句")
 
         # 将选项卡控件添加到主布局
         scroll_area = QScrollArea()
@@ -76,12 +71,7 @@ class ConfigDialog(QDialog):
         # --- 添加提示词编辑区域---
         self.setup_prompt_template_tab(prompt_layout, current_config)
 
-        # --- 添加选中词汇例句生成设置区域---
-        self.setup_word_selection_tab(word_selection_layout, current_config)
-
-
-
-    def add_api_setting(self,basic_layout,current_config):
+    def add_api_setting(self, basic_layout, current_config):
         api_group = QGroupBox("API 设置")
         api_layout = QFormLayout()
         # 添加API设置组件
