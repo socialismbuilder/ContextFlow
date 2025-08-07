@@ -19,10 +19,10 @@ def get_or_create_deck(deck_name):
 
 def get_or_create_note_type():
     """
-    获取或创建用于词汇例句的笔记类型
+    获取或创建用于例句翻译的笔记类型
     """
     try:
-        note_type_name = "ContextFlow词汇例句"
+        note_type_name = "ContextFlow例句翻译"
         
         # 检查是否已存在该笔记类型
         existing_models = mw.col.models.all()
@@ -35,8 +35,7 @@ def get_or_create_note_type():
         
         # 添加字段
         fields = [
-            {"name": "词汇", "description": "目标词汇"},
-            {"name": "例句", "description": "包含词汇的例句"},
+            {"name": "例句", "description": "目标例句"},
             {"name": "翻译", "description": "例句的中文翻译"},
             {"name": "来源", "description": "例句来源标记"}
         ]
@@ -46,12 +45,11 @@ def get_or_create_note_type():
             mw.col.models.add_field(model, field)
         
         # 添加卡片模板
-        template = mw.col.models.new_template("词汇例句卡片")
+        template = mw.col.models.new_template("例句翻译卡片")
         template['qfmt'] = '''
 <div style="text-align: center; font-size: 18px; margin: 20px;">
     <div style="color: #666; font-size: 14px; margin-bottom: 10px;">例句</div>
     <div style="font-size: 20px; line-height: 1.4;">{{例句}}</div>
-    <div style="margin-top: 20px; color: #999; font-size: 12px;">请回忆词汇 "{{词汇}}" 的含义</div>
 </div>
 '''
         template['afmt'] = '''
@@ -62,11 +60,6 @@ def get_or_create_note_type():
     <div style="margin-top: 20px;">
         <div style="color: #666; font-size: 14px; margin-bottom: 5px;">翻译</div>
         <div style="font-size: 16px; color: #333;">{{翻译}}</div>
-    </div>
-    
-    <div style="margin-top: 20px;">
-        <div style="color: #666; font-size: 14px; margin-bottom: 5px;">目标词汇</div>
-        <div style="font-size: 18px; font-weight: bold; color: #2196F3;">{{词汇}}</div>
     </div>
     
     <div style="margin-top: 15px; font-size: 12px; color: #999;">{{来源}}</div>
@@ -83,9 +76,9 @@ def get_or_create_note_type():
         print(f"ERROR: 创建笔记类型失败: {e}")
         return None
 
-def create_word_sentence_card(word, sentence, translation, deck_name):
+def create_sentence_card(sentence, translation, deck_name):
     """
-    创建词汇例句卡片
+    创建例句翻译卡片
     """
     try:
         # 获取或创建牌组
@@ -104,10 +97,9 @@ def create_word_sentence_card(word, sentence, translation, deck_name):
         note = Note(mw.col, note_type)
         
         # 设置字段值
-        note.fields[0] = word  # 词汇
-        note.fields[1] = sentence  # 例句
-        note.fields[2] = translation  # 翻译
-        note.fields[3] = f"ContextFlow自动生成 - {time.strftime('%Y-%m-%d %H:%M')}"  # 来源
+        note.fields[0] = sentence  # 例句
+        note.fields[1] = translation  # 翻译
+        note.fields[2] = f"ContextFlow自动生成 - {time.strftime('%Y-%m-%d %H:%M')}"  # 来源
         
         # 设置牌组
         note.note_type()['did'] = deck_id
@@ -118,11 +110,11 @@ def create_word_sentence_card(word, sentence, translation, deck_name):
         # 保存更改
         mw.col.save()
         
-        print(f"SUCCESS: 成功创建词汇例句卡片 - 词汇: {word}, 牌组: {deck_name}")
+        print(f"SUCCESS: 成功创建例句翻译卡片 - 例句: {sentence}, 牌组: {deck_name}")
         return True
         
     except Exception as e:
-        print(f"ERROR: 创建词汇例句卡片失败: {e}")
+        print(f"ERROR: 创建例句翻译卡片失败: {e}")
         return False
 
 def check_deck_exists(deck_name):
@@ -148,21 +140,14 @@ def get_available_decks():
         print(f"ERROR: 获取可用牌组列表时出错: {e}")
         return []
 
-def validate_card_data(word, sentence, translation):
+def validate_card_data(sentence, translation):
     """
     验证卡片数据的有效性
     """
-    if not word or not word.strip():
-        return False, "词汇不能为空"
-    
     if not sentence or not sentence.strip():
         return False, "例句不能为空"
     
     if not translation or not translation.strip():
         return False, "翻译不能为空"
-    
-    # 检查例句是否包含目标词汇
-    if word.lower() not in sentence.lower():
-        return False, f"例句中未找到目标词汇 '{word}'"
     
     return True, "数据有效"

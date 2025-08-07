@@ -7,6 +7,7 @@ from aqt import mw
 from aqt.qt import QAction, QMenu
 from anki.hooks import addHook
 from .config_manager import get_config
+from .anki_card_creator import create_sentence_card
 
 # 全局变量存储选中的词汇
 selected_word = ""
@@ -77,14 +78,14 @@ def on_webview_context_menu(webview, menu):
             # 添加新的菜单项
             # 1. 刷新例句
             refresh_action = QAction(f'刷新例句', menu)
-            refresh_action.triggered.connect(lambda: refresh_example_sentences(selected_word))
+            refresh_action.triggered.connect(lambda: refresh_example_sentences())
             menu.addAction(refresh_action)
             
             # 2. 存储例句
             store_action = QAction(f'存储例句', menu)
-            store_action.triggered.connect(lambda: store_example_sentences(selected_word))
+            store_action.triggered.connect(lambda: store_example_sentences(main_logic.showing_sentence, main_logic.showing_translation))
             menu.addAction(store_action)
-            
+
             # 3. AI详细解释
             if selected_word:
                 explain_action = QAction(f'AI详细解释 "{selected_word}"', menu)
@@ -96,19 +97,17 @@ def on_webview_context_menu(webview, menu):
             print(f"ERROR: 处理右键菜单时出错: {e}")
 
 # 新增的函数
-def refresh_example_sentences(word):
+def refresh_example_sentences():
     """
     刷新例句
     """
     mw.reset()
-    # 在这里实现详细的刷新例句逻辑
 
-def store_example_sentences(word):
+def store_example_sentences(sentence, translation):
     """
     存储例句
     """
-    print(f"测试：存储例句 for {word}")
-    # 在这里实现详细的存储例句逻辑
+    create_sentence_card(sentence, translation, "测试")
 
 from .ai_explanation_dialog import AIExplanationDialog # 导入AIExplanationDialog
 
