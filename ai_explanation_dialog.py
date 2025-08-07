@@ -99,60 +99,85 @@ class MessageBubble(QWidget):
 
         example_block_widget = QWidget()
         example_block_layout = QVBoxLayout(example_block_widget)
-        example_block_layout.setContentsMargins(10, 10, 10, 10)
-        example_block_layout.setSpacing(8)
+        example_block_layout.setContentsMargins(8, 8, 8, 8) # 调整边距
+        example_block_layout.setSpacing(5) # 调整间距
         example_block_widget.setStyleSheet("QWidget { background-color: #4a4a4a; border-radius: 8px; }")
 
         # 动态调整高度的辅助函数
         def adjust_text_edit_height(text_edit):
             doc_height = text_edit.document().size().height()
-            text_edit.setFixedHeight(int(doc_height) + 5)
+            text_edit.setFixedHeight(int(doc_height) + 2) # 调整固定高度，使其更紧凑
 
-        # 例句
-        sentence_label = QTextEdit()
-        sentence_label.setReadOnly(True)
-        sentence_label.setHtml(f"<div style='color: #f0f0f0;'><p style='font-weight: bold;'>例句:</p><p>{sentence}</p></div>")
-        sentence_label.setStyleSheet("background-color: transparent; border: none;")
-        sentence_label.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        sentence_label.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        # 连接信号，使用 lambda 确保在内容变化时能正确调整自己的高度
-        sentence_label.textChanged.connect(lambda: adjust_text_edit_height(sentence_label))
-        
-        # 翻译
-        translation_label = QTextEdit()
-        translation_label.setReadOnly(True)
-        translation_label.setHtml(f"<div style='color: #f0f0f0;'><p style='font-weight: bold;'>翻译:</p><p>{translation}</p></div>")
-        translation_label.setStyleSheet("background-color: transparent; border: none;")
-        translation_label.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        translation_label.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        translation_label.textChanged.connect(lambda: adjust_text_edit_height(translation_label))
+        # 例句标签和添加到Anki按钮的水平布局
+        header_layout = QHBoxLayout()
+        header_layout.setContentsMargins(0, 0, 0, 0)
+        header_layout.setSpacing(5)
 
-        # 按钮
+        # 例句标签
+        sentence_title_label = QTextEdit()
+        sentence_title_label.setReadOnly(True)
+        sentence_title_label.setHtml("<span style='color: #f0f0f0; font-size: 12px; font-weight: bold;'>例句:</span>") # 调整字体大小
+        sentence_title_label.setStyleSheet("background-color: transparent; border: none;")
+        sentence_title_label.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        sentence_title_label.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        sentence_title_label.setFixedHeight(20) # 固定高度以适应小字体
+        sentence_title_label.setFixedWidth(40) # 固定宽度
+
+        # 添加到Anki按钮
         add_button = QPushButton("添加到Anki")
         add_button.setStyleSheet("""
             QPushButton {
                 background-color: #007bff; color: #ffffff; border: none;
-                border-radius: 10px; padding: 6px 12px; font-size: 13px;
-                max-width: 120px; margin-top: 5px;
+                border-radius: 10px; padding: 4px 10px; font-size: 13px;
+                max-width: 120px;
             }
             QPushButton:hover { background-color: #0056b3; }
             QPushButton:pressed { background-color: #004085; }
         """)
         add_button.clicked.connect(partial(self.example_sentence_requested.emit, sentence, translation))
         
-        button_layout = QHBoxLayout()
-        button_layout.addStretch()
-        button_layout.addWidget(add_button)
+        header_layout.addWidget(sentence_title_label)
+        header_layout.addStretch() # 将按钮推到右边
+        header_layout.addWidget(add_button)
 
-        example_block_layout.addWidget(sentence_label)
-        example_block_layout.addWidget(translation_label)
-        example_block_layout.addLayout(button_layout)
+        # 例句内容
+        sentence_content_label = QTextEdit()
+        sentence_content_label.setReadOnly(True)
+        sentence_content_label.setHtml(f"<div style='color: #f0f0f0; font-size: 15px; margin-top: 0;'>{sentence}</div>") # 保持文字大小
+        sentence_content_label.setStyleSheet("background-color: transparent; border: none;")
+        sentence_content_label.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        sentence_content_label.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        sentence_content_label.textChanged.connect(lambda: adjust_text_edit_height(sentence_content_label))
+        
+        # 翻译标签
+        translation_title_label = QTextEdit()
+        translation_title_label.setReadOnly(True)
+        translation_title_label.setHtml("<span style='color: #f0f0f0; font-size: 12px; font-weight: bold;'>翻译:</span>") # 调整字体大小
+        translation_title_label.setStyleSheet("background-color: transparent; border: none;")
+        translation_title_label.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        translation_title_label.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        translation_title_label.setFixedHeight(20) # 固定高度以适应小字体
+        translation_title_label.setFixedWidth(40) # 固定宽度
+
+        # 翻译内容
+        translation_content_label = QTextEdit()
+        translation_content_label.setReadOnly(True)
+        translation_content_label.setHtml(f"<div style='color: #f0f0f0; font-size: 15px; margin-top: 0;'>{translation}</div>") # 保持文字大小
+        translation_content_label.setStyleSheet("background-color: transparent; border: none;")
+        translation_content_label.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        translation_content_label.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        translation_content_label.textChanged.connect(lambda: adjust_text_edit_height(translation_content_label))
+
+        example_block_layout.addLayout(header_layout)
+        example_block_layout.addWidget(sentence_content_label)
+        example_block_layout.addWidget(translation_title_label)
+        example_block_layout.addWidget(translation_content_label)
         
         self.example_sentences_layout.addWidget(example_block_widget)
 
         # 【关键】内容设置后，手动调用一次以确保初始高度正确
-        QTimer.singleShot(0, lambda: adjust_text_edit_height(sentence_label))
-        QTimer.singleShot(0, lambda: adjust_text_edit_height(translation_label))
+        QTimer.singleShot(0, lambda: adjust_text_edit_height(sentence_content_label))
+        QTimer.singleShot(0, lambda: adjust_text_edit_height(translation_content_label))
 
 
 class AIExplanationDialog(QDialog):
@@ -394,4 +419,3 @@ class AIExplanationDialog(QDialog):
         save_deck = config.get("save_deck", "收藏例句")
         create_sentence_card(sentence, translation, save_deck)
         tooltip("例句已发送到后端处理！", period=1500)
-
