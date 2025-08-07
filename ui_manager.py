@@ -7,7 +7,7 @@ import aqt
 from aqt.qt import (
     QDialog, QVBoxLayout, QFormLayout, QLabel, QLineEdit, QPushButton, QComboBox,
     QGroupBox, QHBoxLayout, QWidget, QDialogButtonBox, QMessageBox, QApplication,
-    QTabWidget, QTextEdit, Qt,QGridLayout,QCompleter, QScrollArea
+    QTabWidget, QTextEdit, QSplitter, Qt, QGridLayout, QCompleter, QScrollArea
 )
 from .config_manager import get_config, save_config  # 使用相对导入
 from .cache_manager import clear_cache
@@ -818,19 +818,6 @@ class ConfigDialog(QDialog):
             "learning_language": self.learning_language_combo.currentText(),
             "prompt_name": self.prompt_name_combo.currentText()  # 键名保持 prompt_name
         }
-        
-        # 添加选中词汇例句生成配置
-        if hasattr(self, 'word_selection_enabled'):
-            word_selection_config = {
-                "enabled": self.word_selection_enabled.currentText() == "启用",
-                "target_deck_name": self.target_deck_name.text(),
-                "sentence_count": int(self.sentence_count.currentText()),
-                "custom_prompt": self.custom_prompt_edit.toPlainText(),
-                "use_custom_prompt": self.use_custom_prompt.currentText() == "使用自定义提示词",
-                "difficulty_level": self.word_difficulty_combo.currentText(),
-                "sentence_length": self.word_length_combo.currentText()
-            }
-            new_config["word_selection"] = word_selection_config
 
         # 从旧配置中继承 custom_prompts, preset_api_urls 等，因为它们不在UI上直接编辑，但需要保留
         current_full_config = get_config()
@@ -838,95 +825,9 @@ class ConfigDialog(QDialog):
             if key in current_full_config:
                 new_config[key] = current_full_config[key]
 
-        save_config(new_config) # 调用 config_manager 中的保存函数
-        QMessageBox.information(self, "成功", "配置已保存。") # 提示用户
-        self.accept() # 关闭对话框
-
-    def setup_word_selection_tab(self, layout, config):
-        """设置选中词汇例句生成选项卡"""
-        from .config_manager import get_word_selection_config
-
-        word_config = get_word_selection_config()
-
-        # 功能启用设置组
-        enable_group = QGroupBox("功能设置")
-        enable_layout = QFormLayout()
-
-        self.word_selection_enabled = QComboBox()
-        self.word_selection_enabled.addItems(["启用", "禁用"])
-        self.word_selection_enabled.setCurrentText("启用" if word_config.get("enabled", True) else "禁用")
-        enable_layout.addRow("选中词汇例句生成:", self.word_selection_enabled)
-
-        enable_group.setLayout(enable_layout)
-        layout.addWidget(enable_group)
-
-        # 例句生成设置组
-        sentence_group = QGroupBox("例句生成设置")
-        sentence_layout = QFormLayout()
-
-        # 目标牌组设置
-        self.target_deck_name = QLineEdit(word_config.get("target_deck_name", ""))
-        self.target_deck_name.setPlaceholderText("例如: 我的词汇牌组")
-        sentence_layout.addRow("目标牌组名称:", self.target_deck_name)
-
-        # 例句数量设置
-        self.sentence_count = QComboBox()
-        self.sentence_count.addItems(["1", "2", "3", "4", "5"])
-        self.sentence_count.setCurrentText(str(word_config.get("sentence_count", 3)))
-        sentence_layout.addRow("生成例句数量:", self.sentence_count)
-
-        # 难度级别设置
-        self.word_difficulty_combo = QComboBox()
-        preset_difficulties = config.get("preset_difficulties", [])
-        self.word_difficulty_combo.addItems(preset_difficulties)
-        current_difficulty = word_config.get("difficulty_level", "中级 (B1): 并列/简单复合句，稍复杂话题，扩大词汇范围")
-        if current_difficulty in preset_difficulties:
-            self.word_difficulty_combo.setCurrentText(current_difficulty)
-        sentence_layout.addRow("例句难度:", self.word_difficulty_combo)
-
-        # 句子长度设置
-        self.word_length_combo = QComboBox()
-        preset_lengths = config.get("preset_lengths", [])
-        self.word_length_combo.addItems(preset_lengths)
-        current_length = word_config.get("sentence_length", "中等长度句 (约25-40词): 通用对话及文章常用长度")
-        if current_length in preset_lengths:
-            self.word_length_combo.setCurrentText(current_length)
-        sentence_layout.addRow("句子长度:", self.word_length_combo)
-
-        sentence_group.setLayout(sentence_layout)
-        layout.addWidget(sentence_group)
-
-        # 自定义提示词设置组
-        prompt_group = QGroupBox("自定义提示词 (可选)")
-        prompt_layout = QVBoxLayout()
-
-        self.use_custom_prompt = QComboBox()
-        self.use_custom_prompt.addItems(["使用默认提示词", "使用自定义提示词"])
-        self.use_custom_prompt.setCurrentText("使用自定义提示词" if word_config.get("use_custom_prompt", False) else "使用默认提示词")
-        prompt_layout.addWidget(self.use_custom_prompt)
-
-        self.custom_prompt_edit = QTextEdit()
-        self.custom_prompt_edit.setPlaceholderText("在此输入自定义提示词模板...")
-        self.custom_prompt_edit.setMaximumHeight(100)
-        self.custom_prompt_edit.setPlainText(word_config.get("custom_prompt", ""))
-        prompt_layout.addWidget(self.custom_prompt_edit)
-
-        # 根据选择显示/隐藏自定义提示词编辑框
-        def toggle_custom_prompt():
-            is_custom = self.use_custom_prompt.currentText() == "使用自定义提示词"
-            self.custom_prompt_edit.setVisible(is_custom)
-
-        self.use_custom_prompt.currentTextChanged.connect(toggle_custom_prompt)
-        toggle_custom_prompt()  # 初始化显示状态
-
-        prompt_group.setLayout(prompt_layout)
-        layout.addWidget(prompt_group)
-
-        # 添加说明文本
-        help_label = QLabel("说明：选中词汇例句生成功能允许您在复习时选中例句中的生词，右键生成新的例句并添加到指定牌组。")
-        help_label.setWordWrap(True)
-        help_label.setStyleSheet("color: #666; font-size: 12px; margin: 10px;")
-        layout.addWidget(help_label)
+        save_config(new_config)  # 调用 config_manager 中的保存函数
+        QMessageBox.information(self, "成功", "配置已保存。")  # 提示用户
+        self.accept()  # 关闭对话框
 
 # --- 全局函数 ---
 _dialog_instance = None
