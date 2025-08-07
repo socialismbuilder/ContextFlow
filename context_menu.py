@@ -107,7 +107,7 @@ def store_example_sentences(sentence, translation):
     """
     存储例句
     """
-    create_sentence_card(sentence, translation, "测试")
+    create_sentence_card(sentence, translation, get_config().get("save_deck", "收藏例句"))
 
 from .ai_explanation_dialog import AIExplanationDialog # 导入AIExplanationDialog
 

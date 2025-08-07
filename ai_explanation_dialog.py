@@ -12,6 +12,7 @@ import re
 from functools import partial
 
 from .config_manager import get_config
+from .anki_card_creator import create_sentence_card
 
 # --- 样式部分无变化 ---
 DARK_THEME_STYLESHEET = """
@@ -388,5 +389,9 @@ class AIExplanationDialog(QDialog):
     def _handle_example_sentence_request(self, sentence: str, translation: str):
         print(f"接收到例句：{sentence}")
         print(f"接收到翻译：{translation}")
+
+        config = get_config()
+        save_deck = config.get("save_deck", "收藏例句")
+        create_sentence_card(sentence, translation, save_deck)
         tooltip("例句已发送到后端处理！", period=1500)
 
