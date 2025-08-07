@@ -61,13 +61,9 @@ def on_webview_context_menu(webview, menu):
         try:
             # 通过JavaScript获取选中文本
             selected_text = webview.selectedText()
-            if not selected_text:
-                return
             
             # 清理选中的文本
             cleaned_text = clean_selected_text(selected_text)
-            if not is_valid_word(cleaned_text):
-                return
             
             # 存储选中的词汇
             selected_word = cleaned_text
@@ -88,11 +84,12 @@ def on_webview_context_menu(webview, menu):
             menu.addAction(store_action)
             
             # 3. AI详细解释
-            explain_action = QAction(f'AI详细解释 "{selected_word}"', menu)
             from . import main_logic
             sentence = main_logic.showing_sentence
-            explain_action.triggered.connect(lambda: explain_word_with_ai(sentence, selected_word))
-            menu.addAction(explain_action)
+            if selected_word:
+                explain_action = QAction(f'AI详细解释 "{selected_word}"', menu)
+                explain_action.triggered.connect(lambda: explain_word_with_ai(sentence, selected_word))
+                menu.addAction(explain_action)
             
             
         except Exception as e:
@@ -103,7 +100,7 @@ def refresh_example_sentences(word):
     """
     刷新例句
     """
-    print(f"测试：刷新例句 for {word}")
+    mw.reset()
     # 在这里实现详细的刷新例句逻辑
 
 def store_example_sentences(word):
