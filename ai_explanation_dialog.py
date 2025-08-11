@@ -92,9 +92,12 @@ class MessageBubble(QWidget):
         self.text_display.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.text_display.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.text_display.setMinimumHeight(40)
-        self.text_display.setFixedWidth(int(parent_dialog.width() * 0.75))
+        # 初始宽度设置，但后续会通过 resizeEvent 动态调整
+        self.text_display.setFixedWidth(int(parent_dialog.width() * 0.75)) 
+        self.text_display.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Preferred) # 允许宽度调整
         
         self.text_display.textChanged.connect(self._adjust_main_text_height)
+
         if sender == "user":
             self.text_display.setPlainText(text)
             self.text_display.setStyleSheet(USER_BUBBLE_STYLE)
@@ -242,6 +245,34 @@ class AIExplanationDialog(QDialog):
 
         self.init_ui()
         self.start_explanation()
+
+    def resizeEvent(self, event):
+        # 当对话框大小改变时，更新所有气泡的宽度
+        super().resizeEvent(event)
+        new_bubble_width = int(self.width() * 0.75)
+        for i in range(self.conversation_layout.count()):
+            item = self.conversation_layout.itemAt(i)
+            if item and item.widget() and isinstance(item.widget(), MessageBubble):
+                bubble = item.widget()
+                bubble.text_display.setFixedWidth(new_bubble_width)
+                # 确保主文本气泡的高度也随之调整
+                bubble._adjust_main_text_height()
+
+                # 确保例句块的宽度和高度也随之调整
+                for j in range(bubble.example_sentences_layout.count()):
+                    example_item = bubble.example_sentences_layout.itemAt(j)
+                    if example_item and example_item.widget():
+                        example_block_widget = example_item.widget()
+                        example_block_widget.setFixedWidth(new_bubble_width - 16) # 减去内边距
+
+                        # 遍历例句块内的所有QTextEdit，调整其高度
+                        for child_item_idx in range(example_block_widget.layout().count()):
+                            child_item = example_block_widget.layout().itemAt(child_item_idx)
+                            if child_item and child_item.widget() and isinstance(child_item.widget(), QTextEdit):
+                                text_edit = child_item.widget()
+                                # 动态调整高度的辅助函数，与MessageBubble中定义的保持一致
+                                doc_height = text_edit.document().size().height()
+                                text_edit.setFixedHeight(int(doc_height) + 2)
 
     def init_ui(self):
         main_layout = QVBoxLayout(self)
