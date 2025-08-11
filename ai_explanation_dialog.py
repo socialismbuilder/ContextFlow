@@ -34,6 +34,41 @@ USER_BUBBLE_STYLE = "QTextEdit { background-color: #3c3c3c; color: #f0f0f0; bord
 AI_BUBBLE_STYLE = "QTextEdit { background-color: #f0f0f0; color: #1e1e1e; border-radius: 15px; padding: 10px; border: none; font-size: 14px; }"
 
 
+prompt = """你将扮演一位资深的语言学家和词典编纂师。你的核心任务是为正在学习语言的用户，深入、清晰地解释一个特定词汇或短语。
+# 用户输入：
+- 原始例句: '{sentence}'
+- 目标词汇/短语: '{word_to_explain}'
+
+#你的任务与输出格式：
+请严格遵循以下结构，为用户生成一份详尽的词汇学习卡片。请使用 Markdown 格式化你的回答。
+## 1. 核心释义
+给出这个词或短语的详细解释，包括词性、含义、音标等
+2. 语境解析：
+深入分析目标词汇/短语在原始例句中的具体含义。阐明它是常规用法，还是具有某种引申、比喻或特殊的语境色彩。
+3. 词汇辨析
+提供若干目标词汇/短语的近义词和形近词，并简要的进行辨析
+
+4.  应用实例：
+根据以下学习要求，创作 2-3 个高质量的例句，来展示 目标词汇/短语的典型用法。
+请确保例句和翻译使用以下JSON格式输出，一个例句翻译对就是一个JSON对象，这一部分必须放在段落最后且无额外内容或注释，以便系统识别：
+
+
+- 词汇量大致为：{vocab_level}
+- 学习目标是：{learning_goal}
+- 句子最大难度：{difficulty_level}
+- 句子最大长度:{sentence_length_desc}
+
+**重要**: 例句和翻译必须以独立的 JSON 对象格式提供，并置于回答的末尾。不要在 JSON 代码块同一行内添加任何解释性文字或注释，以便系统识别，JSON之间不要换行：
+```json
+{{
+  "sentence": "例句原文",
+  "translation": "例句翻译"
+}}```
+
+完成以上步骤后，等待用户的追问。对于追问，请直接、简洁地回答，无需重复上述完整流程，也不用再生成例句，除非用户明确要求。
+"""
+
+
 # 【修改】重新引入创建独立UI组件的逻辑
 class MessageBubble(QWidget):
     example_sentence_requested = pyqtSignal(str, str)
@@ -60,7 +95,6 @@ class MessageBubble(QWidget):
         self.text_display.setFixedWidth(int(parent_dialog.width() * 0.75))
         
         self.text_display.textChanged.connect(self._adjust_main_text_height)
-
         if sender == "user":
             self.text_display.setPlainText(text)
             self.text_display.setStyleSheet(USER_BUBBLE_STYLE)
@@ -251,16 +285,27 @@ class AIExplanationDialog(QDialog):
 
     def start_explanation(self):
         # 【修改】系统提示回归到要求AI返回JSON
-        system_prompt = (
-            f"你是一个专业的词汇解释助手。用户对'{self.sentence}'例句中的，'{self.word_to_explain}'这部分感到困惑，请你给用户详细解释。\n"
-            "在你的解释中，如果提供例句和翻译，请务必使用以下JSON格式输出，一个例句翻译对就是一个JSON对象，并且不要包含额外的Markdown代码块标记（例如```json```）：\n"
-            "```json\n"
-            "{\n"
-            "  \"sentence\": \"例句原文\",\n"
-            "  \"translation\": \"例句翻译\"\n"
-            "}\n"
-            "```\n"
-            "请确保JSON是独立的，前后可以有其他解释文本，但JSON本身不要被Markdown代码块包裹。"
+        config = get_config()
+        DEFAULT_CONFIG = {
+            "vocab_level": "大学英语四级 CET-4 (4000词)",
+            "learning_goal": "提升日常浏览英文网页与资料的流畅度",
+            "difficulty_level": "中级 (B1): 并列/简单复合句，稍复杂话题，扩大词汇范围",
+            "sentence_length_desc": "中等长度句 (约25-40词): 通用对话及文章常用长度",
+            "learning_language": "英语",
+            "prompt_name": "默认-不标记目标词"
+        }
+        vocab_level = config.get("vocab_level", DEFAULT_CONFIG["vocab_level"])
+        learning_goal = config.get("learning_goal", DEFAULT_CONFIG["learning_goal"])
+        difficulty_level = config.get("difficulty_level", DEFAULT_CONFIG["difficulty_level"])
+        sentence_length_desc = config.get("sentence_length_desc", DEFAULT_CONFIG["sentence_length_desc"])
+
+        system_prompt = prompt.format(
+            sentence=self.sentence,
+            word_to_explain=self.word_to_explain,
+            vocab_level=vocab_level,
+            learning_goal=learning_goal,
+            difficulty_level=difficulty_level,
+            sentence_length_desc=sentence_length_desc
         )
         self.conversation_history = [{"role": "system", "content": system_prompt}]
         self.send_message_to_ai()
@@ -350,7 +395,7 @@ class AIExplanationDialog(QDialog):
         if chunks_to_process and self.current_ai_bubble:
             self.current_ai_response_raw_text += chunks_to_process
             
-            md_html = markdown.markdown(self.current_ai_response_raw_text, extensions=self.markdown_extensions)
+            md_html = markdown.markdown(self.current_ai_response_raw_text.strip(), extensions=self.markdown_extensions)
             styled_html = f"""
                 <style>
                     table {{ width: 100%; border-collapse: collapse; }}
