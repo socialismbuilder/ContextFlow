@@ -8,7 +8,7 @@ from aqt.qt import QAction, QMenu
 from anki.hooks import addHook
 from .config_manager import get_config
 from .anki_card_creator import create_sentence_card
-
+from . import config_manager
 # 全局变量存储选中的词汇
 selected_word = ""
 
@@ -51,29 +51,27 @@ def on_webview_context_menu(webview, menu):
     """
     处理网页视图的右键菜单事件
     """
-    global selected_word
+    global selected_word,showing_sentence, showing_translation
     current_deck = mw.col.decks.name(mw.reviewer.card.did)
     config = get_config()
     config_deck_name = config.get("deck_name")
     field_index_match = re.search(r'\[(\d+)\]$', config_deck_name)
     base_deck_name = re.sub(r'\[\d+\]$', '', config_deck_name) if field_index_match else config_deck_name
+    showing_sentence = config_manager.showing_sentence
+    showing_translation = config_manager.showing_translation
+
+    # 通过JavaScript获取选中文本
+    selected_text = webview.selectedText()
+    # 清理选中的文本
+    cleaned_text = clean_selected_text(selected_text) 
+    # 存储选中的词汇
+    selected_word = cleaned_text
+
     if (current_deck == base_deck_name or current_deck.startswith(base_deck_name + "::")):
         # 获取选中的文本
         try:
-            # 通过JavaScript获取选中文本
-            selected_text = webview.selectedText()
-            
-            # 清理选中的文本
-            cleaned_text = clean_selected_text(selected_text)
-            
-            # 存储选中的词汇
-            selected_word = cleaned_text
-            
-            # 添加分隔符（如果菜单不为空）
             if menu.actions():
                 menu.addSeparator()
-            
-            from . import main_logic
 
             # 添加新的菜单项
             # 1. 刷新例句
@@ -83,18 +81,28 @@ def on_webview_context_menu(webview, menu):
             
             # 2. 存储例句
             store_action = QAction(f'存储例句', menu)
-            store_action.triggered.connect(lambda: store_example_sentences(main_logic.showing_sentence, main_logic.showing_translation))
+            store_action.triggered.connect(lambda: store_example_sentences(showing_sentence, showing_translation))
             menu.addAction(store_action)
 
             # 3. AI详细解释
             if selected_word:
                 explain_action = QAction(f'AI详细解释 "{selected_word}"', menu)
-                explain_action.triggered.connect(lambda: explain_word_with_ai(main_logic.showing_sentence, selected_word))
+                explain_action.triggered.connect(lambda: explain_word_with_ai(showing_sentence, selected_word))
                 menu.addAction(explain_action)
             
             
         except Exception as e:
             print(f"ERROR: 处理右键菜单时出错: {e}")
+    if current_deck == config.get("save_deck", "收藏例句") and mw.reviewer and mw.reviewer.card and selected_word:
+        if menu.actions():
+            menu.addSeparator()
+        print(f"DEBUG: 当前卡片的牌组是 {current_deck}, 选中的词汇是 {selected_word}")
+        # 4. 仅在收藏例句中添加“AI详细解释”菜单
+        explain_action = QAction(f'AI详细解释 "{selected_word}"', menu)
+        # 获取当前卡片的第一个字段
+        showing_sentence = mw.reviewer.card.note().fields[0]
+        explain_action.triggered.connect(lambda: explain_word_with_ai(clean_selected_text(showing_sentence), selected_word))
+        menu.addAction(explain_action)
 
 # 新增的函数
 def refresh_example_sentences():

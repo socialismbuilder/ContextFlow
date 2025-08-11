@@ -1,6 +1,10 @@
 import aqt
 # 插件的 __name__，用于访问 Anki 配置
 ADDON_NAME = __name__.split('.')[0] # 获取顶级包名
+
+showing_sentence = ""
+showing_translation = ""
+
 def get_config():
     """获取当前配置（基于config.json的默认值与用户保存值合并）"""
     # 直接通过插件名获取用户配置

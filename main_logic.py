@@ -10,6 +10,7 @@ from anki.cards import Card
 import re
 from PyQt6.QtCore import QTimer  # 导入PyQt6的QTimer类
 import html
+from . import config_manager
 # 使用相对导入来引入其他模块的功能
 from .config_manager import get_config
 from .cache_manager import load_cache, save_cache
@@ -26,7 +27,6 @@ Occupy_bar = False
 # executor = None # 不再需要单个执行器
 # --- 结束后台任务队列 ---
 
-# showing_sentence 和 showing_translation 仍然需要，用于跨 question/answer 状态传递
 showing_sentence = ""
 showing_translation = ""
 upcoming_cards_cache = []  # 全局缓存，存储排序后的新卡片关键词列表
@@ -297,6 +297,8 @@ def on_card_render(html: str, card: Card, context: str) -> str:
                         showing_sentence = current_sentence
                         showing_translation = current_translation
                         #print(f"DEBUG: 显示 '{keyword}' 的缓存句子")
+                        config_manager.showing_sentence = showing_sentence
+                        config_manager.showing_translation = showing_translation
                         html_to_return = Process_front_html(current_sentence) # Set HTML for return
                     else:
                         # --- Cache Hit but list is empty ---
