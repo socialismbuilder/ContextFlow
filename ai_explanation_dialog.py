@@ -14,7 +14,7 @@ from functools import partial
 from .config_manager import get_config
 from .anki_card_creator import create_sentence_card
 
-# --- 样式部分无变化 ---
+# --- 样式 ---
 DARK_THEME_STYLESHEET = """
     AIExplanationDialog { background-color: #2e2e2e; }
     QScrollArea { border: none; background-color: transparent; }
@@ -92,7 +92,7 @@ class MessageBubble(QWidget):
     def set_main_html(self, html: str):
         self.text_display.setHtml(html)
 
-    # 【核心修复】重新实现 add_example_sentence_block，并正确处理高度
+    # 添加例句块，并正确处理高度
     def add_example_sentence_block(self, sentence: str, translation: str):
         if self.sender != 'ai':
             return
@@ -272,7 +272,9 @@ class AIExplanationDialog(QDialog):
             return
             
         self.user_input.clear()
-        self._add_message_bubble(user_message, 'user')
+        user_bubble = self._add_message_bubble(user_message, 'user')
+        # 确保用户气泡高度在内容设置后正确调整
+        QTimer.singleShot(0, user_bubble._adjust_main_text_height)
         self.conversation_history.append({"role": "user", "content": user_message})
         self.send_message_to_ai()
 
