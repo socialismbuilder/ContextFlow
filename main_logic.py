@@ -13,7 +13,7 @@ import html
 from . import config_manager
 # 使用相对导入来引入其他模块的功能
 from .config_manager import get_config
-from .cache_manager import load_cache, save_cache
+from .cache_manager import load_cache, save_cache, clear_cache
 from .api_client import generate_ai_sentence
 from .Process_Card import Process_back_html,Process_front_html
 from .stats import add_stats
@@ -44,9 +44,7 @@ def _process_keyword_task(keyword_with_priority):
 
         if sentence_pairs: # 确保返回了有效的句子对
             with cache_lock: # 获取锁以安全地修改缓存
-                cache = load_cache()
-                cache[keyword] = sentence_pairs # 存储列表的列表
-                save_cache(cache)
+                save_cache(keyword, sentence_pairs) # 存储列表的列表
             print(f"DEBUG: {keyword}处理成功")
         else:
             print(f"WARNING: {keyword}处理失败")
@@ -267,12 +265,11 @@ def on_card_render(html: str, card: Card, context: str) -> str:
             # --- 问题面逻辑 ---
             html_to_return = None # Variable to store the HTML result
 
-            cache = load_cache()
+            sentence_pairs = load_cache(keyword)
 
-            if keyword in cache:
+            if sentence_pairs:
                 # --- Cache Hit Logic ---
                 try:
-                    sentence_pairs = cache[keyword]
                     # 验证缓存数据格式 (从JSON加载后应为列表的列表)
                     if not isinstance(sentence_pairs, list) or not all(isinstance(p, list) and len(p) == 2 for p in sentence_pairs):
                         # 检查内部元素是否为列表
@@ -281,8 +278,7 @@ def on_card_render(html: str, card: Card, context: str) -> str:
                         # 打印具体内容帮助调试
                         print(f"调试：'{keyword}'的缓存数据无效：{sentence_pairs}")
                         aqt.utils.showInfo(err_msg + " 请检查调试控制台。")
-                        del cache[keyword] # 删除错误数据
-                        save_cache(cache)
+                        save_cache(keyword, []) # 删除错误数据
                         # _clear_processing_state() # Removed
                         return "缓存数据格式错误"
 
@@ -291,8 +287,7 @@ def on_card_render(html: str, card: Card, context: str) -> str:
                         # --- Cache Hit ---
                         sentence_list = sentence_pairs.pop(0)
                         current_sentence, current_translation = sentence_list
-                        cache[keyword] = sentence_pairs # Update cache with remaining pairs
-                        save_cache(cache)
+                        save_cache(keyword, sentence_pairs) # Update cache with remaining pairs
                         # _clear_processing_state() # Removed
                         showing_sentence = current_sentence
                         showing_translation = current_translation
@@ -302,8 +297,7 @@ def on_card_render(html: str, card: Card, context: str) -> str:
                         html_to_return = Process_front_html(current_sentence) # Set HTML for return
                     else:
                         # --- Cache Hit but list is empty ---
-                        del cache[keyword] # Remove empty entry
-                        save_cache(cache)
+                        save_cache(keyword, []) # Remove empty entry
                         # _clear_processing_state() # Removed
                         showing_sentence = "无可用缓存例句" # Display message
                         showing_translation = ""
@@ -384,12 +378,11 @@ def on_card_render(html: str, card: Card, context: str) -> str:
 
                     # 检查缓存（主线程安全）
                     with cache_lock:
-                        cache = load_cache()
-                        if keyword in cache and cache[keyword]:
+                        sentence_pairs = load_cache(keyword)
+                        if sentence_pairs:
                             timer.stop()  # 停止QTimer
                             mw.progress.finish()
                             # 取出第一个例句对并更新缓存
-                            sentence_pairs = cache[keyword]
                             if mw.reviewer and mw.reviewer.card and mw.reviewer.card.id == card.id:
                                 Occupy_bar = False
                                 mw.reset()
@@ -413,16 +406,17 @@ def on_card_render(html: str, card: Card, context: str) -> str:
                 # print(f"DEBUG: 预加载检查 - 待处理关键词: {upcoming_keywords}") # 添加日志
                 if upcoming_keywords:
                     with cache_lock: # Lock for safe cache access and queue adding
-                        cache = load_cache() # Load cache once inside the lock
                         # Get current queue items to avoid adding duplicates unnecessarily
                         # Note: This is a snapshot, race conditions still possible but less likely
                         current_queue_items = set(item for item in task_queue.queue)
 
                         for kw in upcoming_keywords:
-                            #if kw and kw not in cache and kw not in current_queue_items:
-                            if kw and (kw not in cache or (not cache.get(kw))) and kw not in current_queue_items and kw != keyword:
-                                task_queue.put((1, kw)) # 被动缓存，低优先级 (1)
-                                #print(f"调试：预加载 - 已将'{kw}'加入队列（优先级1）。")
+                            if kw and kw != keyword:
+                                # 检查该单词是否在缓存中且有数据
+                                sentence_pairs = load_cache(kw)
+                                if not sentence_pairs and kw not in current_queue_items:
+                                    task_queue.put((1, kw)) # 被动缓存，低优先级 (1)
+                                    #print(f"调试：预加载 - 已将'{kw}'加入队列（优先级1）。")
             except Exception as e:
                 print(f"ERROR: Failed to preload keywords: {e}")
             except Exception as e:

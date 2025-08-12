@@ -1,6 +1,7 @@
 __pycache__/
 meta.json
 sentence_cache.json
+sentence_cache.db
 release/
 .idea/
 .vscode/
