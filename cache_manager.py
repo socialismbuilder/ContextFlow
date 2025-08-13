@@ -47,42 +47,23 @@ def load_cache(word=None):
     """
     _init_db()
     
-    if word is not None:
-        # 根据单词查询例句翻译对
-        try:
-            conn = _get_db_connection()
-            if conn is None:
-                return []
-            cursor = conn.cursor()
-            cursor.execute("SELECT sentence_pairs FROM cache WHERE word = ?", (word,))
-            row = cursor.fetchone()
-            conn.close()
-            
-            if row:
-                return json.loads(row['sentence_pairs'])
-            else:
-                return []
-        except Exception as e:
-            print(f"ERROR: 查询单词'{word}'缓存失败：{str(e)}")
+    # 根据单词查询例句翻译对
+    try:
+        conn = _get_db_connection()
+        if conn is None:
             return []
-    else:
-        # 兼容旧接口：返回整个缓存
-        try:
-            conn = _get_db_connection()
-            if conn is None:
-                return {}
-            cursor = conn.cursor()
-            cursor.execute("SELECT word, sentence_pairs FROM cache")
-            rows = cursor.fetchall()
-            conn.close()
-            
-            cache = {}
-            for row in rows:
-                cache[row['word']] = json.loads(row['sentence_pairs'])
-            return cache
-        except Exception as e:
-            print(f"ERROR: 加载完整缓存失败：{str(e)}")
-            return {}
+        cursor = conn.cursor()
+        cursor.execute("SELECT sentence_pairs FROM cache WHERE word = ?", (word,))
+        row = cursor.fetchone()
+        conn.close()
+        
+        if row:
+            return json.loads(row['sentence_pairs'])
+        else:
+            return []
+    except Exception as e:
+        print(f"ERROR: 查询单词'{word}'缓存失败：{str(e)}")
+        return []
 
 def save_cache(word, sentence_pairs=None):
     """
@@ -91,43 +72,23 @@ def save_cache(word, sentence_pairs=None):
     如果只提供word，则删除该单词的缓存（为了兼容旧接口）
     """
     _init_db()
-    
-    if sentence_pairs is not None:
-        # 保存单词和例句翻译对
-        try:
-            conn = _get_db_connection()
-            if conn is None:
-                return False
-            cursor = conn.cursor()
-            cursor.execute('''
-                INSERT OR REPLACE INTO cache (word, sentence_pairs, updated_at)
-                VALUES (?, ?, CURRENT_TIMESTAMP)
-            ''', (word, json.dumps(sentence_pairs, ensure_ascii=False)))
-            conn.commit()
-            conn.close()
-            return True
-        except Exception as e:
-            error_msg = f"保存单词'{word}'缓存失败：{str(e)}"
-            aqt.utils.showInfo(error_msg)
-            print(f"ERROR: {error_msg}")
+    try:
+        conn = _get_db_connection()
+        if conn is None:
             return False
-    else:
-        # 兼容旧接口：删除指定单词的缓存
-        try:
-            conn = _get_db_connection()
-            if conn is None:
-                return False
-            cursor = conn.cursor()
-            cursor.execute("DELETE FROM cache WHERE word = ?", (word,))
-            conn.commit()
-            conn.close()
-            return True
-        except Exception as e:
-            error_msg = f"删除单词'{word}'缓存失败：{str(e)}"
-            aqt.utils.showInfo(error_msg)
-            print(f"ERROR: {error_msg}")
-            return False
-
+        cursor = conn.cursor()
+        cursor.execute('''
+            INSERT OR REPLACE INTO cache (word, sentence_pairs, updated_at)
+            VALUES (?, ?, CURRENT_TIMESTAMP)
+        ''', (word, json.dumps(sentence_pairs, ensure_ascii=False)))
+        conn.commit()
+        conn.close()
+        return True
+    except Exception as e:
+        error_msg = f"保存单词'{word}'缓存失败：{str(e)}"
+        aqt.utils.showInfo(error_msg)
+        print(f"ERROR: {error_msg}")
+        return False
 def clear_cache():
     """
     清除例句缓存（同时删除数据库文件和JSON缓存文件）
