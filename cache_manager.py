@@ -20,10 +20,33 @@ def _init_db():
             CREATE TABLE IF NOT EXISTS cache (
                 word TEXT PRIMARY KEY,
                 sentence_pairs TEXT NOT NULL,
+                sentence_count INTEGER DEFAULT 0,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         ''')
+        
+        # 检查并添加 sentence_count 字段（如果不存在）
+        cursor.execute("PRAGMA table_info(cache)")
+        columns = [col[1] for col in cursor.fetchall()]
+        if 'sentence_count' not in columns:
+            cursor.execute("ALTER TABLE cache ADD COLUMN sentence_count INTEGER DEFAULT 0")
+            print("DEBUG: 已添加 'sentence_count' 字段。")
+            
+            # 遍历现有数据，填充 sentence_count
+            cursor.execute("SELECT word, sentence_pairs FROM cache")
+            rows = cursor.fetchall()
+            for row in rows:
+                word = row[0]
+                sentence_pairs_json = row[1]
+                try:
+                    sentence_pairs = json.loads(sentence_pairs_json)
+                    sentence_count = len(sentence_pairs)
+                    cursor.execute("UPDATE cache SET sentence_count = ? WHERE word = ?", (sentence_count, word))
+                except json.JSONDecodeError:
+                    print(f"WARNING: 无法解析单词 '{word}' 的 sentence_pairs。")
+            print("DEBUG: 已遍历并更新现有记录的 'sentence_count' 字段。")
+            
         conn.commit()
         conn.close()
     except Exception as e:
@@ -77,10 +100,14 @@ def save_cache(word, sentence_pairs=None):
         if conn is None:
             return False
         cursor = conn.cursor()
+        
+        # 计算句子数量
+        sentence_count = len(sentence_pairs) if sentence_pairs else 0
+
         cursor.execute('''
-            INSERT OR REPLACE INTO cache (word, sentence_pairs, updated_at)
-            VALUES (?, ?, CURRENT_TIMESTAMP)
-        ''', (word, json.dumps(sentence_pairs, ensure_ascii=False)))
+            INSERT OR REPLACE INTO cache (word, sentence_pairs, sentence_count, updated_at)
+            VALUES (?, ?, ?, CURRENT_TIMESTAMP)
+        ''', (word, json.dumps(sentence_pairs, ensure_ascii=False), sentence_count))
         conn.commit()
         conn.close()
         return True
