@@ -112,104 +112,41 @@ def clean_html(raw_string):
 
 
 
-def get_upcoming_cards(card,deck_name):
-
-    config = get_config()
-
-    # Initialize empty lists for keywords
-    new_keywords = []
-    learn_keywords = []
-    review_keywords = []
-
-
-    # 优化后的缓存逻辑
-    global upcoming_cards_cache  # 声明使用全局缓存
-
-    # 初始化new_keywords
-    new_keywords = []
-
-    # 检查缓存是否存在（非空）
-    if upcoming_cards_cache:
-        #print("成功获取缓存")
-        # 获取当前卡片的keyword（用于查找缓存位置）
-        current_raw_keyword = card.note().fields[0] if card.note().fields else ""
-        current_keyword = clean_html(current_raw_keyword)
-
-        # 查找当前keyword在缓存中的位置
+def get_upcoming_cards(card, deck_name):
+    """使用V3调度器API获取接下来的10张卡片的关键词"""
+    # 使用V3调度器API获取队列中的卡片，获取10张
+    output = mw.col.sched.get_queued_cards(fetch_limit=10, intraday_learning_only=False)
+    
+    if not output.cards:
+        return []
+    
+    # 获取接下来的10张卡片的关键词
+    keywords = []
+    for i in range(min(10, len(output.cards))):
         try:
-            index = upcoming_cards_cache.index(current_keyword)
-            # 取缓存中当前位置之后的三个关键词（最多三个）
-            new_keywords = upcoming_cards_cache[index+1:index+4]
-            #print("从缓存取出三个新词")
-        except ValueError:
-            # 缓存中找不到当前keyword，清空缓存并重置new_keywords
-            new_keywords = []
-            #print("缓存中未找到该词")
-    else:
-        #print("未获取缓存")
-        # 缓存不存在，执行同步排序并显示进度条
-        new_query = f"deck:{deck_name} is:new"
-        all_new_card_ids = mw.col.find_cards(new_query)  # 获取所有新卡片ID
-        all_new_cards = [mw.col.get_card(cid) for cid in all_new_card_ids]  # 提前获取卡片对象
-        
-        # 启动进度条
-        mw.progress.start(
-            immediate=True,
-            label="正在排序新卡片...",
-            min=0,
-            max=0 # 不显示具体进度，只显示加载状态
-        )
-        
-        # 同步排序
-        sorted_new_cards = sorted(all_new_cards, key=lambda c: c.due)
-        
-        # 处理排序后的卡片，生成并缓存关键词
-        upcoming_cards_cache.clear()
-        for c in sorted_new_cards:
-            raw_keyword = c.note().fields[0] if c.note().fields else ""
-            keyword = clean_html(raw_keyword)
-            if keyword:  # 过滤空关键词
-                upcoming_cards_cache.append(keyword)
-        
-        mw.progress.finish() # 排序完成后关闭进度条
-
-        # 初始加载时取前三个关键词作为new_keywords
-        new_keywords = upcoming_cards_cache[:3]
-        #print("从排序结果中取出三个新词")
-
-    # Get 3 learning cards
-    learning_query = f"deck:{deck_name} is:learn"
-    learning_card_ids = mw.col.find_cards(learning_query) 
-
-    for card_id in learning_card_ids:
-        card = mw.col.get_card(card_id)
-        keyword = card.note().fields[0]
-        # Clean the keyword
-        keyword = clean_html(keyword)
-        learn_keywords.append(keyword)
-
-    # Get 3 review cards
-    review_query = f"deck:{deck_name} is:due"
-    review_card_ids = mw.col.find_cards(review_query)  # Limit to 3
-
-    for card_id in review_card_ids:
-        card = mw.col.get_card(card_id)
-        keyword = card.note().fields[0]
-        # Clean the keyword
-        keyword = clean_html(keyword)
-        review_keywords.append(keyword)
-
-    # Combine results
-    #all_keywords = new_keywords + learn_keywords + review_keywords
-    all_keywords = list(dict.fromkeys(new_keywords + learn_keywords + review_keywords))
-
-    # Print results
-    #print(f"新学卡片关键词 ({len(new_keywords)}张): {new_keywords}")
-    #print(f"学习中卡片关键词 ({len(learn_keywords)}张): {learn_keywords}")
-    #print(f"复习卡片关键词 ({len(review_keywords)}张): {review_keywords}")
-    #print(f"全部关键词:共 {len(all_keywords)}个")
-
-    return all_keywords
+            # 直接使用output.cards中的卡片信息
+            queued_card = output.cards[i]
+            
+            # 获取卡片对象
+            backend_card = queued_card.card
+            upcoming_card = Card(mw.col, backend_card=backend_card)
+            
+            # 检查卡片是否属于目标牌组
+            card_deck_name = aqt.mw.col.decks.name(upcoming_card.did)
+            if not (card_deck_name == deck_name or card_deck_name.startswith(deck_name + "::")):
+                continue  # 跳过不属于目标牌组的卡片
+            
+            # 获取卡片的第一个字段并清理
+            note = upcoming_card.note()
+            first_field = note.fields[0] if note.fields else ""
+            cleaned_keyword = clean_html(first_field)
+            
+            if cleaned_keyword:  # 过滤空关键词
+                keywords.append(cleaned_keyword)
+                
+        except Exception:
+            continue
+    return keywords
 
 
 def on_card_render(html: str, card: Card, context: str) -> str:
