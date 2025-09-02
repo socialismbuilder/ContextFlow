@@ -327,7 +327,9 @@ def generate_ai_sentence(config, keyword, prompt=None):
     global top_difficulty_keywords
     if not top_difficulty_keywords:  # 列表为空时获取最新数据
         top_difficulty_keywords = get_top_difficulty_keywords()
-    if not top_difficulty_keywords:
+    
+    # 如果困难单词不够100个，就不加第二关键词了
+    if not top_difficulty_keywords or len(top_difficulty_keywords) < 100:
         second_keywords_str = ""
     else:
         # 随机选取10个作为第二关键词（不足10个则全选）
