@@ -212,6 +212,11 @@ def get_api_response(config, formatted_prompt):
     model_name = config.get("model_name")
     try:
         global support_thinking
+        
+        # 检查是否为qwen3模型，如果是则在提示词后添加"/no_think"
+        final_prompt = formatted_prompt
+        if model_name and "qwen3" in model_name.lower():
+            final_prompt = formatted_prompt + "/no_think"
 
         if support_thinking:
             response = requests.post(
@@ -219,7 +224,7 @@ def get_api_response(config, formatted_prompt):
                 headers={"Authorization": f"Bearer {api_key}"},
                 json={
                     "model": model_name,
-                    "messages": [{"role": "user", "content": formatted_prompt}],
+                    "messages": [{"role": "user", "content": final_prompt}],
                     "thinking": {"type": "disabled"}
                 },
                 timeout=30
@@ -230,7 +235,7 @@ def get_api_response(config, formatted_prompt):
                 headers={"Authorization": f"Bearer {api_key}"},
                 json={
                     "model": model_name,
-                    "messages": [{"role": "user", "content": formatted_prompt}],
+                    "messages": [{"role": "user", "content": final_prompt}],
                 },
                 timeout=30
             )
@@ -289,15 +294,27 @@ def parse_message_content_to_sentence_pairs(message_content: str, keyword: str) 
     :param keyword: 当前处理的关键词（用于错误提示）
     :return: 有效的句子对列表，空列表表示无有效数据
     """
-    # 清理可能的代码块标记
+    # 使用正则表达式匹配JSON内容，而不是清理代码块
     try:
-        cleaned_content = re.sub(r'(^```(?:[a-zA-Z0-9]+)?\s*\n|\s*```\s*$)', '', message_content, flags=re.DOTALL)
-        content_json = json.loads(cleaned_content)
+        # 尝试直接解析整个消息内容
+        content_json = json.loads(message_content)
         raw_pairs = content_json.get("sentences")
     except json.JSONDecodeError:
-        print(
-            f"错误：[parse_message_content_to_sentence_pairs] 关键字'{keyword}'的响应非JSON格式：{message_content[:200]}")
-        return []
+        # 如果直接解析失败，尝试提取JSON部分
+        try:
+            # 匹配JSON对象（包含大括号的内容）
+            json_match = re.search(r'\{.*\}', message_content, re.DOTALL)
+            if json_match:
+                content_json = json.loads(json_match.group())
+                raw_pairs = content_json.get("sentences")
+            else:
+                print(
+                    f"错误：[parse_message_content_to_sentence_pairs] 关键字'{keyword}'的响应中未找到JSON内容：{message_content}")
+                return []
+        except json.JSONDecodeError:
+            print(
+                f"错误：[parse_message_content_to_sentence_pairs] 关键字'{keyword}'的响应非JSON格式：{message_content}")
+            return []
 
     # 验证sentences字段类型
     if not isinstance(raw_pairs, list):
@@ -390,20 +407,26 @@ def test_api_sync(
         "Authorization": f"Bearer {api_key}",
         "Content-Type": "application/json",
     }
+    
+    # 检查是否为qwen3模型，如果是则在提示词后添加"/no_think"
+    test_prompt = "不要有任何多余其他输出，重复一遍这个词: Hello"
+    if model_name and "qwen3" in model_name.lower():
+        test_prompt = test_prompt + "/no_think"
+    
     # 简单的prompt，要求重复一个词，并限制token数量
     global support_thinking
     if not support_thinking:
         # 如果不支持thinking参数，则不包含该参数
         payload = {
             "model": model_name,
-            "messages": [{"role": "user", "content": "不要有任何多余其他输出，重复一遍这个词: Hello"}],
+            "messages": [{"role": "user", "content": test_prompt}],
             "max_tokens": 50
         }
     else:
         # 如果支持thinking参数，则包含该参数
         payload = {
             "model": model_name,
-            "messages": [{"role": "user", "content": "不要有任何多余其他输出，重复一遍这个词: Hello"}],
+            "messages": [{"role": "user", "content": test_prompt}],
             "max_tokens": 50,
             "thinking": {"type": "disabled"}
         }

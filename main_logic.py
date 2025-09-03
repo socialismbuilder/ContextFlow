@@ -13,7 +13,7 @@ import html
 from . import config_manager
 # 使用相对导入来引入其他模块的功能
 from .config_manager import get_config
-from .cache_manager import load_cache, save_cache, clear_cache
+from .cache_manager import load_cache, save_cache, clear_cache, pop_cache
 from .api_client import generate_ai_sentence
 from .Process_Card import Process_back_html,Process_front_html
 from .stats import add_stats
@@ -21,15 +21,12 @@ from .stats import add_stats
 task_queue = queue.PriorityQueue() # 使用优先级队列
 cache_lock = threading.Lock() # 用于保护缓存访问和队列检查/添加
 stop_event = threading.Event()
-high_prio_executor = None # 用于高优先级任务
-low_prio_executor = None  # 用于低优先级任务
+executor = None # 使用单个线程池
 Occupy_bar = False
-# executor = None # 不再需要单个执行器
 # --- 结束后台任务队列 ---
 
 showing_sentence = ""
 showing_translation = ""
-upcoming_cards_cache = []  # 全局缓存，存储排序后的新卡片关键词列表
 # _processing_card_id 和 _processing_keyword 不再需要
 
 def _process_keyword_task(keyword_with_priority):
@@ -58,25 +55,25 @@ def _process_keyword_task(keyword_with_priority):
 
 
 def _sentence_worker_manager():
-    """后台工作线程管理器，从队列中获取任务并提交到相应的线程池"""
-    global high_prio_executor, low_prio_executor
-    if high_prio_executor is None or low_prio_executor is None:
-        print("ERROR: One or both thread pool executors not initialized in _sentence_worker_manager.")
+    """后台工作线程管理器，从队列中获取任务并提交到线程池"""
+    global executor
+    if executor is None:
+        print("ERROR: Thread pool executor not initialized in _sentence_worker_manager.")
         return
 
     while not stop_event.is_set():
         try:
+            # 检查线程池是否有空闲线程
+            if executor._work_queue.qsize() >= executor._max_workers:
+                # 线程池已满，等待一段时间再检查
+                time.sleep(0.1)
+                continue
+
             priority, keyword = task_queue.get(timeout=1) # 解包
             keyword_with_priority = (priority, keyword) # 重新打包以传递
 
-            #rint(f"DEBUG_QUEUE: 从队列中获取任务: {keyword} (优先级: {priority})")
-
-            if priority == 0: # 假设0是最高优先级
-                #print(f"DEBUG_QUEUE: 提交高优先级任务到 high_prio_executor: {keyword}")
-                future = high_prio_executor.submit(_process_keyword_task, keyword_with_priority)
-            else:
-                #print(f"DEBUG_QUEUE: 提交低优先级任务到 low_prio_executor: {keyword}")
-                future = low_prio_executor.submit(_process_keyword_task, keyword_with_priority)
+            # 提交任务到线程池
+            future = executor.submit(_process_keyword_task, keyword_with_priority)
             
             # 当任务完成时调用 task_done
             future.add_done_callback(lambda f: task_queue.task_done())
@@ -113,16 +110,23 @@ def clean_html(raw_string):
 
 
 def get_upcoming_cards(card, deck_name):
-    """使用V3调度器API获取接下来的10张卡片的关键词"""
-    # 使用V3调度器API获取队列中的卡片，获取10张
-    output = mw.col.sched.get_queued_cards(fetch_limit=10, intraday_learning_only=False)
+    """使用V3调度器API获取接下来的卡片的关键词"""
+    # 检查是否为单线程模式（通过executor的线程数判断）
+    global executor
+    is_single_threaded = executor is not None and executor._max_workers == 1
+    
+    # 如果是单线程模式，获取100张卡片；否则获取10张
+    fetch_limit = 100 if is_single_threaded else 10
+    
+    # 使用V3调度器API获取队列中的卡片
+    output = mw.col.sched.get_queued_cards(fetch_limit=fetch_limit, intraday_learning_only=False)
     
     if not output.cards:
         return []
     
-    # 获取接下来的10张卡片的关键词
+    # 获取接下来的卡片的关键词
     keywords = []
-    for i in range(min(10, len(output.cards))):
+    for i in range(min(fetch_limit, len(output.cards))):
         try:
             # 直接使用output.cards中的卡片信息
             queued_card = output.cards[i]
@@ -202,67 +206,23 @@ def on_card_render(html: str, card: Card, context: str) -> str:
             # --- 问题面逻辑 ---
             html_to_return = None # Variable to store the HTML result
 
-            sentence_pairs = load_cache(keyword)
+            popped_pair = pop_cache(keyword)
 
-            if sentence_pairs:
+            if popped_pair:
                 # --- Cache Hit Logic ---
                 try:
-                    # 验证缓存数据格式 (从JSON加载后应为列表的列表)
-                    if not isinstance(sentence_pairs, list) or not all(isinstance(p, list) and len(p) == 2 for p in sentence_pairs):
-                        # 检查内部元素是否为列表
-                        err_msg = f"缓存数据格式错误：关键词 '{keyword}' 对应的值不是 [例句, 翻译] 列表的列表，而是 {type(sentence_pairs)} 或内部元素格式不正确。"
-                        print(err_msg)
-                        # 打印具体内容帮助调试
-                        print(f"调试：'{keyword}'的缓存数据无效：{sentence_pairs}")
-                        aqt.utils.showInfo(err_msg + " 请检查调试控制台。")
-                        save_cache(keyword, []) # 删除错误数据
-                        # _clear_processing_state() # Removed
-                        return "缓存数据格式错误"
-
-                    if sentence_pairs:
-                        # 缓存列表非空，取出第一个列表
-                        # --- Cache Hit ---
-                        sentence_list = sentence_pairs.pop(0)
-                        current_sentence, current_translation = sentence_list
-                        save_cache(keyword, sentence_pairs) # Update cache with remaining pairs
-                        # _clear_processing_state() # Removed
-                        showing_sentence = current_sentence
-                        showing_translation = current_translation
-                        #print(f"DEBUG: 显示 '{keyword}' 的缓存句子")
-                        config_manager.showing_sentence = showing_sentence
-                        config_manager.showing_translation = showing_translation
-                        html_to_return = Process_front_html(current_sentence) # Set HTML for return
-                    else:
-                        # --- Cache Hit but list is empty ---
-                        save_cache(keyword, []) # Remove empty entry
-                        # _clear_processing_state() # Removed
-                        showing_sentence = "无可用缓存例句" # Display message
-                        showing_translation = ""
-                        print(f"DEBUG: 关键字 '{keyword}' 的缓存条目为空，正在请求生成。")
-                        # Add to queue even if cache was empty, worker will handle generation
-                        with cache_lock: # Use lock for queue access consistency
-                            # Check if already in queue? Maybe not necessary, worker checks cache again.
-                            task_queue.put((0, keyword)) # 主动缓存，高优先级 (0)
-                            print(f"DEBUG: 将'{keyword}'加入队列（来自空缓存，优先级0）。")
-                        # Need to start waiting process even if cache was hit but empty
-                        # Treat as cache miss for waiting purposes
-                        print(f"DEBUG: 缓存命中但内容为空，关键词为'{keyword}'。开始等待。")
-                        # Fall through to cache miss logic below
-                        pass # Let the 'else' block handle the waiting start
-
-                except KeyError:
-                    # This shouldn't happen due to 'if keyword in cache' check, but handle defensively
-                    aqt.utils.showInfo(f"缓存读取异常：关键词 '{keyword}' 在尝试读取时不存在。")
-                    # _clear_processing_state() # Removed
-                    showing_sentence = "缓存读取异常"
-                    showing_translation = ""
-                    html_to_return = Process_front_html(showing_sentence) # Set error HTML
+                    current_sentence, current_translation = popped_pair
+                    showing_sentence = current_sentence
+                    showing_translation = current_translation
+                    #print(f"DEBUG: 显示 '{keyword}' 的缓存句子")
+                    config_manager.showing_sentence = showing_sentence
+                    config_manager.showing_translation = showing_translation
+                    html_to_return = Process_front_html(current_sentence) # Set HTML for return
                 except Exception as e:
                     error_type = type(e).__name__
                     error_msg = f"处理缓存时发生意外错误 ({error_type})：{str(e)}"
                     print(error_msg)
                     aqt.utils.showInfo(error_msg)
-                    # _clear_processing_state() # Removed
                     showing_sentence = "缓存处理错误"
                     showing_translation = ""
                     html_to_return = Process_front_html(showing_sentence) # Set error HTML
@@ -275,9 +235,21 @@ def on_card_render(html: str, card: Card, context: str) -> str:
 
                 # 添加到队列（工作进程将处理此项）
                 with cache_lock:
-                    # 检查是否已在队列中或正在处理？现在等待的优先级较低。
-                    task_queue.put((0, keyword)) # 主动缓存，高优先级 (0)
-                    print(f"DEBUG: 已添加'{keyword}'到队列（缓存未命中，优先级0）。")
+                    # 检查队列中是否已有相同关键词的任务
+                    existing_in_queue = False
+                    higher_prio_exists = False
+                    for item in task_queue.queue:
+                        if item[1] == keyword:
+                            existing_in_queue = True
+                            if item[0] <= 0:  # 已有相同或更高优先级的任务
+                                higher_prio_exists = True
+                            break
+                    
+                    if not existing_in_queue or not higher_prio_exists:
+                        task_queue.put((0, keyword)) # 主动缓存，高优先级 (0)
+                        print(f"DEBUG: 已添加'{keyword}'到队列（缓存未命中，优先级0）。")
+                    else:
+                        print(f"DEBUG: 关键词'{keyword}'已在队列中且有相同或更高优先级，跳过添加")
 
                 # 最终主线程安全的定时器实现（使用PyQt6的QTimer）
                 start_time = time.time()
@@ -352,8 +324,15 @@ def on_card_render(html: str, card: Card, context: str) -> str:
                                 # 检查该单词是否在缓存中且有数据
                                 sentence_pairs = load_cache(kw)
                                 if not sentence_pairs and kw not in current_queue_items:
-                                    task_queue.put((1, kw)) # 被动缓存，低优先级 (1)
-                                    #print(f"调试：预加载 - 已将'{kw}'加入队列（优先级1）。")
+                                    # 检查队列中是否已有相同关键词的高优先级任务
+                                    has_high_prio = False
+                                    for item in task_queue.queue:
+                                        if item[1] == kw and item[0] <= 1:  # 已有优先级<=1的任务
+                                            has_high_prio = True
+                                            break
+                                    
+                                    if not has_high_prio:
+                                        task_queue.put((1, kw)) # 被动缓存，低优先级 (1)
             except Exception as e:
                 print(f"ERROR: Failed to preload keywords: {e}")
             except Exception as e:
@@ -384,25 +363,36 @@ def on_card_render(html: str, card: Card, context: str) -> str:
 # --- End Obsolete functions ---
 
 def start_worker():
-    """启动后台例句生成工作线程（现在是两个线程池和管理器）"""
-    global high_prio_executor, low_prio_executor, manager_thread
-    if high_prio_executor is None and low_prio_executor is None:
+    """启动后台例句生成工作线程（使用单个线程池）"""
+    global executor, manager_thread
+    if executor is None:
         stop_event.clear()
-        # 创建两个线程池
-        # 例如：高优先级用1个线程，低优先级用9个线程
-        high_prio_executor = concurrent.futures.ThreadPoolExecutor(max_workers=2, thread_name_prefix='HighPrioWorker')
-        low_prio_executor = concurrent.futures.ThreadPoolExecutor(max_workers=9, thread_name_prefix='LowPrioWorker')
+        
+        # 获取配置以确定线程数量
+        config = get_config()
+        api_url = config.get("api_url", "")
+        
+        # 检查是否为ollama API或localhost，如果是则使用单线程模式
+        if "ollama" in api_url.lower() or "localhost" in api_url.lower() or "127.0.0.1" in api_url.lower():
+            max_workers = 1
+            print("DEBUG: 检测到ollama或localhost API，启用单线程模式")
+        else:
+            max_workers = 3
+            print("DEBUG: 使用多线程模式（3个线程）")
+        
+        # 创建单个线程池
+        executor = concurrent.futures.ThreadPoolExecutor(max_workers=max_workers, thread_name_prefix='SentenceWorker')
         
         manager_thread = threading.Thread(target=_sentence_worker_manager, daemon=True)
         manager_thread.start()
-        print("DEBUG: 高优先级和低优先级句子处理线程池及管理器已启动。")
+        print(f"DEBUG: 句子处理线程池及管理器已启动（{max_workers}个线程）。")
     else:
         print("DEBUG: 工作线程已在运行或未正确清理。")
 
 
 def stop_worker():
-    """停止后台例句生成工作线程（两个线程池和管理器）"""
-    global high_prio_executor, low_prio_executor, manager_thread
+    """停止后台例句生成工作线程（单个线程池和管理器）"""
+    global executor, manager_thread
 
     # 取消注册选中词汇例句生成功能的右键菜单
     try:
@@ -412,7 +402,7 @@ def stop_worker():
     except Exception as e:
         print(f"ERROR: 取消注册选中词汇例句生成功能失败: {e}")
 
-    print("DEBUG: Stopping sentence worker manager and thread pools...")
+    print("DEBUG: Stopping sentence worker manager and thread pool...")
     stop_event.set() # 通知 _sentence_worker_manager 停止
 
     # 清空队列
@@ -432,24 +422,18 @@ def stop_worker():
         if manager_thread.is_alive():
             print("WARNING: Sentence worker manager thread did not stop gracefully.")
     
-    # 关闭高优先级线程池
-    if high_prio_executor:
-        high_prio_executor.shutdown(wait=True, cancel_futures=False)
-        print("DEBUG: High-priority thread pool shutdown complete.")
-        high_prio_executor = None
-        
-    # 关闭低优先级线程池
-    if low_prio_executor:
-        low_prio_executor.shutdown(wait=True, cancel_futures=False)
-        print("DEBUG: Low-priority thread pool shutdown complete.")
-        low_prio_executor = None
+    # 关闭线程池
+    if executor:
+        executor.shutdown(wait=True, cancel_futures=False)
+        print("DEBUG: Thread pool shutdown complete.")
+        executor = None
         
     manager_thread = None # 清理 manager_thread 引用
     
-    if high_prio_executor is None and low_prio_executor is None:
+    if executor is None:
         print("DEBUG: All workers stopped and cleaned up.")
     else:
-        print("DEBUG: Worker (executors) not running or already stopped, or cleanup issue.")
+        print("DEBUG: Worker (executor) not running or already stopped, or cleanup issue.")
 
 def register_hooks():
     """注册所有需要的钩子，并启动工作线程"""

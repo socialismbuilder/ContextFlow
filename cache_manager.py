@@ -91,7 +91,7 @@ def load_cache(word=None):
 def save_cache(word, sentence_pairs=None):
     """
     保存例句缓存
-    如果提供word和sentence_pairs，则保存该单词的例句翻译对
+    如果提供word和sentence_pairs，则保存该单词的例句翻译对（合并现有数据）
     如果只提供word，则删除该单词的缓存（为了兼容旧接口）
     """
     _init_db()
@@ -100,6 +100,12 @@ def save_cache(word, sentence_pairs=None):
         if conn is None:
             return False
         cursor = conn.cursor()
+        
+        # 先加载现有缓存，合并现有例句和新例句
+        existing_pairs = load_cache(word)
+        if existing_pairs and sentence_pairs:
+            # 合并现有例句和新例句
+            sentence_pairs = existing_pairs + sentence_pairs
         
         # 计算句子数量
         sentence_count = len(sentence_pairs) if sentence_pairs else 0
@@ -116,6 +122,70 @@ def save_cache(word, sentence_pairs=None):
         aqt.utils.showInfo(error_msg)
         print(f"ERROR: {error_msg}")
         return False
+
+def pop_cache(word):
+    """
+    原子性地取出并删除第一个例句对
+    返回取出的例句对 [sentence, translation]，如果没有例句对则返回 None
+    """
+    _init_db()
+    try:
+        conn = _get_db_connection()
+        if conn is None:
+            return None
+        
+        cursor = conn.cursor()
+        
+        # 开始事务
+        cursor.execute("BEGIN TRANSACTION")
+        
+        # 获取当前缓存
+        cursor.execute("SELECT sentence_pairs FROM cache WHERE word = ?", (word,))
+        row = cursor.fetchone()
+        
+        if not row:
+            conn.commit()
+            conn.close()
+            return None
+        
+        sentence_pairs = json.loads(row['sentence_pairs'])
+        if not sentence_pairs:
+            # 如果没有例句对，删除该记录
+            cursor.execute("DELETE FROM cache WHERE word = ?", (word,))
+            conn.commit()
+            conn.close()
+            return None
+        
+        # 取出第一个例句对
+        popped_pair = sentence_pairs.pop(0)
+        
+        # 更新缓存
+        if sentence_pairs:
+            # 还有剩余例句对，更新缓存
+            cursor.execute('''
+                UPDATE cache 
+                SET sentence_pairs = ?, sentence_count = ?, updated_at = CURRENT_TIMESTAMP
+                WHERE word = ?
+            ''', (json.dumps(sentence_pairs, ensure_ascii=False), len(sentence_pairs), word))
+        else:
+            # 没有剩余例句对，删除记录
+            cursor.execute("DELETE FROM cache WHERE word = ?", (word,))
+        
+        conn.commit()
+        conn.close()
+        return popped_pair
+        
+    except Exception as e:
+        error_msg = f"取出单词'{word}'缓存失败：{str(e)}"
+        aqt.utils.showInfo(error_msg)
+        print(f"ERROR: {error_msg}")
+        try:
+            conn.rollback()
+            conn.close()
+        except:
+            pass
+        return None
+
 def clear_cache():
     """
     清除例句缓存（同时删除数据库文件和JSON缓存文件）

@@ -237,9 +237,17 @@ def _refresh_model_list(parent_dialog, force=False):
         api_url = parent_dialog.api_url.text()
         api_key = parent_dialog.api_key.text()
 
-        if not api_url or not api_key:
+        # 检查是否为 ollama API（允许 API Key 为空）
+        is_ollama = "ollama" in api_url.lower() or "localhost:11434" in api_url
+        
+        if not api_url:
             if force:
-                QMessageBox.warning(parent_dialog, "错误", "请先填写 API URL 和 API Key")
+                QMessageBox.warning(parent_dialog, "错误", "请先填写 API URL")
+            return
+            
+        if not api_key and not is_ollama:
+            if force:
+                QMessageBox.warning(parent_dialog, "错误", "请先填写 API Key")
             return
 
         models = api_client.fetch_available_models(api_url, api_key)
@@ -270,8 +278,15 @@ def _test_api_connection(parent_dialog):
     api_key = parent_dialog.api_key.text()
     model_name = parent_dialog.model_name.currentText()
 
-    if not api_url or not api_key:
-        parent_dialog.test_status_label.setText("<font color='red'>错误: API URL 和 API Key 不能为空。</font>")
+    # 检查是否为 ollama API（允许 API Key 为空）
+    is_ollama = "ollama" in api_url.lower() or "localhost:11434" in api_url
+    
+    if not api_url:
+        parent_dialog.test_status_label.setText("<font color='red'>错误: API URL 不能为空。</font>")
+        return
+        
+    if not api_key and not is_ollama:
+        parent_dialog.test_status_label.setText("<font color='red'>错误: API Key 不能为空。</font>")
         return
 
     parent_dialog.test_status_label.setText("测试中，请稍候...")

@@ -35,7 +35,7 @@ AI_BUBBLE_STYLE = "QTextEdit { background-color: #f0f0f0; color: #1e1e1e; border
 
 
 
-prompt = """你将扮演一位资深的语言学家和友善的语言导师。你的任务是为语言学习者提供精准、简洁且高度相关的词汇/短语解释。
+prompt = """你是ContextFlow软件的语言学习助手，你将扮演一位资深的语言学家和友善的语言导师。你的任务是为语言学习者提供精准、简洁且高度相关的词汇/短语解释。
 
 除例句外，输出篇幅控制在约200-300字。
 
@@ -371,6 +371,11 @@ class AIExplanationDialog(QDialog):
             difficulty_level=difficulty_level,
             sentence_length_desc=sentence_length_desc
         )
+        
+        # 检查模型名称是否包含qwen3，如果是则在提示词末尾添加/no_think标签
+        if "qwen3" in self.model_name.lower():
+            system_prompt += "\n/no_think"
+            
         self.conversation_history = [{"role": "system", "content": system_prompt}]
         self.send_message_to_ai()
 
@@ -389,8 +394,17 @@ class AIExplanationDialog(QDialog):
 
     def send_message_to_ai(self):
         if self.is_streaming: return
-        if not self.api_url or not self.api_key or not self.model_name:
-            showInfo("请在配置中设置API URL、API Key和模型名称。")
+        if not self.api_url or not self.model_name:
+            showInfo("请在配置中设置API URL和模型名称。")
+            return
+            
+        # 检查是否为ollama模型（localhost、127.0.0.1或模型名包含ollama）
+        is_ollama = ("localhost" in self.api_url or "127.0.0.1" in self.api_url or 
+                    "ollama" in self.model_name.lower())
+        
+        # 对于非ollama模型，需要API key
+        if not is_ollama and not self.api_key:
+            showInfo("请在配置中设置API Key。")
             return
 
         self.current_ai_response_raw_text = ""
@@ -402,8 +416,16 @@ class AIExplanationDialog(QDialog):
         self.timer = self.startTimer(50)
 
     def _stream_api_response(self):
-        # 此函数逻辑不变
-        headers = {"Authorization": f"Bearer {self.api_key}", "Content-Type": "application/json"}
+        # 检查是否为ollama模型（localhost、127.0.0.1或模型名包含ollama）
+        is_ollama = ("localhost" in self.api_url or "127.0.0.1" in self.api_url or 
+                    "ollama" in self.model_name.lower())
+        
+        # 对于ollama模型，不设置Authorization header
+        if is_ollama:
+            headers = {"Content-Type": "application/json"}
+        else:
+            headers = {"Authorization": f"Bearer {self.api_key}", "Content-Type": "application/json"}
+            
         from . import api_client
         if api_client.support_thinking:
             payload = {"model": self.model_name, "messages": self.conversation_history, "stream": True,"thinking": {"type": "disabled"}}
@@ -507,7 +529,6 @@ class AIExplanationDialog(QDialog):
             # 清理多余的回车换行
             cleaned_text = self._clean_remaining_text(remaining_text)
             md_html = markdown.markdown(cleaned_text, extensions=self.markdown_extensions)
-            print(cleaned_text)
             styled_html = f"""
                 <style>
                     /* Style for main bubble text */
@@ -541,8 +562,6 @@ class AIExplanationDialog(QDialog):
         return cleaned_text
 
     def _handle_example_sentence_request(self, sentence: str, translation: str):
-        print(f"接收到例句：{sentence}")
-        print(f"接收到翻译：{translation}")
 
         config = get_config()
         save_deck = config.get("save_deck", "收藏例句")

@@ -18,7 +18,7 @@
         "Moonshot AI (Kimi)": "https://api.moonshot.cn/v1/chat/completions",
         "阿里云百练": "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions",
         "AiHubmix":"https://aihubmix.com/v1/chat/completions",
-        "Ollama (localhost)": "http://localhost:11434/api/chat",
+        "Ollama (localhost)": "http://localhost:11434/v1/chat/completions",
         "自定义": ""
     },
     "preset_vocab_levels": [

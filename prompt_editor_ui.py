@@ -238,7 +238,7 @@ def test_prompt_template(parent_dialog):
     parent_dialog.test_prompt_button.setEnabled(False)
     QApplication.processEvents()
 
-    future = main_logic.high_prio_executor.submit(
+    future = main_logic.executor.submit(
         api_client.get_api_response,
         test_config,
         formatted_prompt
