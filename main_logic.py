@@ -21,7 +21,6 @@ from aqt.utils import tooltip # 导入 tooltip
 # --- 后台任务队列 ---
 task_queue = queue.PriorityQueue() # 使用优先级队列
 processing_keywords = set() # 存储正在处理的关键词
-queued_keywords = set() # 存储已经在队列中的关键词（新增）
 cache_lock = threading.Lock() # 用于保护缓存访问和队列检查/添加
 stop_event = threading.Event()
 executor = None # 使用单个线程池
@@ -35,14 +34,10 @@ showing_translation = ""
 def _process_keyword_task(keyword_with_priority):
     """处理单个关键词生成任务（由线程池中的线程调用）"""
     priority, keyword = keyword_with_priority  # 解包优先级和关键词
-    
-    with cache_lock:
-        if keyword in processing_keywords:
-            return # 如果已在处理中，则跳过
-        processing_keywords.add(keyword)
+
 
     config = get_config() # 在每次处理任务前获取最新的配置
-    #print(f"DEBUG:正在处理关键词: {keyword} (优先级: {priority})")
+    print(f"DEBUG:正在处理关键词: {keyword} (优先级: {priority})")
 
     try:
         # 调用同步的 API 函数
@@ -55,7 +50,7 @@ def _process_keyword_task(keyword_with_priority):
 
     except Exception as e:
         # 记录生成过程中发生的任何错误
-        #print(f"ERROR: Worker failed to generate/cache sentences for '{keyword}': {type(e).__name__} - {str(e)}")
+        print(f"ERROR: Worker failed to generate/cache sentences for '{keyword}': {type(e).__name__} - {str(e)}")
         traceback.print_exc() # 打印详细的回溯信息
     finally:
         with cache_lock:
@@ -77,36 +72,33 @@ def _sentence_worker_manager():
                 # 线程池已满，等待一段时间再检查
                 time.sleep(0.1)
                 continue
-
-            priority, keyword = task_queue.get(timeout=1) # 解包
+            with cache_lock:
+                priority, keyword = task_queue.get(timeout=0) # 解包
+                if keyword in processing_keywords: # 检查关键词是否正在处理
+                    task_queue.task_done()
+                    continue
+                processing_keywords.add(keyword)
             keyword_with_priority = (priority, keyword) # 重新打包以传递
 
             # 提交任务到线程池
             future = executor.submit(_process_keyword_task, keyword_with_priority)
             
-            # 当任务完成时调用 task_done 并从 queued_keywords 中移除
+            # 当任务完成时调用 task_done 并显示tooltip
             def task_completed_callback(f):
                 task_queue.task_done()
-                with cache_lock:
-                    if keyword in queued_keywords:
-                        queued_keywords.remove(keyword)
-                        #print(f"DEBUG_QUEUE: 任务完成，从已入队集合中移除: {keyword}")
-                    
-                    # --- 添加 tooltip 逻辑 ---
-                    remaining_tasks = len(queued_keywords) # 获取剩余任务数量
-                    message = f"后台缓存+1，生成队列剩余: {remaining_tasks} 个。"
-                    # 使用 taskman.run_on_main 确保在主线程中调用 tooltip
-                    aqt.mw.taskman.run_on_main(lambda: tooltip(message, period=1000))
-                    # --- 结束 tooltip 逻辑 ---
+                
+                # --- 添加 tooltip 逻辑 ---
+                # 使用队列大小减去正在处理的任务数量来计算剩余任务
+                remaining_tasks = task_queue.qsize() + len(processing_keywords)
+                message = f"后台缓存+1，生成队列剩余: {remaining_tasks} 个。"
+                # 使用 taskman.run_on_main 确保在主线程中调用 tooltip
+                aqt.mw.taskman.run_on_main(lambda: tooltip(message, period=2000,parent=mw))
+                # --- 结束 tooltip 逻辑 ---
 
             future.add_done_callback(task_completed_callback)
-            # 添加到已入队集合
-            with cache_lock:
-                queued_keywords.add(keyword)
-                #print(f"DEBUG_QUEUE: 任务已提交，添加到已入队集合: {keyword} (优先级: {priority})")
-            #print(f"DEBUG_QUEUE: 任务已提交: {keyword} (优先级: {priority})")
 
         except queue.Empty:
+            time.sleep(0.2)
             continue # 队列为空，继续循环等待
         except Exception as e:
             print(f"ERROR: Error getting/submitting task from/to queue: {e}")
@@ -139,23 +131,18 @@ def clean_html(raw_string):
 def reorganize_task_queue(keywords):
     """
     重组任务队列，根据提供的关键词（单个或列表）调整优先级。
-    使用queued_keywords集合来避免重复添加任务。
     """
     with cache_lock:
-        # 筛选出不在缓存中且不在处理中的关键词（即使已经在队列中也要更新优先级）
+        # 筛选出不在缓存中且不在处理中的关键词
         if isinstance(keywords, str):
             # 单个关键词
-            keyword = keywords
-            should_process = (not load_cache(keyword) and 
-                            keyword not in processing_keywords)
-            keywords_to_process = [keyword] if should_process else []
+            keywords_to_process = [keywords] if not load_cache(keywords) and keywords not in processing_keywords else []
         else:
             # 关键词列表
-            keywords_to_process = []
-            for kw in keywords:
-                if (not load_cache(kw) and 
-                    kw not in processing_keywords):
-                    keywords_to_process.append(kw)
+            keywords_to_process = [kw for kw in keywords if not load_cache(kw) and kw not in processing_keywords]
+
+        if not keywords_to_process:
+            return  # 没有需要处理的关键词
 
         # 获取当前队列中的所有任务
         current_tasks = []
@@ -175,54 +162,38 @@ def reorganize_task_queue(keywords):
                 if kw == keyword:
                     updated_tasks.append((0, kw))
                     task_found = True
-                    processed_keywords.add(kw)
                 else:
                     updated_tasks.append((priority, kw))
-            
-            # 只有在关键词需要处理且不在队列中时才添加
             if not task_found and keyword in keywords_to_process:
+                print(f"DEBUG: 新任务添加到队列: {keyword} (优先级: 0)")
                 updated_tasks.append((0, keyword))
-                processed_keywords.add(keyword)
-                queued_keywords.add(keyword)  # 添加到已入队集合
         else:
             # 关键词列表
             upcoming_keywords = keywords
-            # 首先处理传入的关键词列表，设置它们的优先级
-            for i, kw in enumerate(upcoming_keywords):
-                if kw not in keywords_to_process:
-                    continue  # 跳过不需要处理的关键词
-                    
-                # 检查当前队列中是否已有该关键词
-                found_in_current = False
-                for j in range(len(current_tasks)):
-                    priority, current_kw = current_tasks[j]
-                    if current_kw == kw:
-                        # 更新优先级为传入的优先级（不管原来是什么优先级）
-                        updated_tasks.append((i + 1, kw))
-                        #print(f"DEBUG_QUEUE: 优先级更新为 {i+1}：{kw}")
-                        found_in_current = True
-                        processed_keywords.add(kw)
-                        # 从current_tasks中移除这个任务，避免后续重复处理
-                        current_tasks.pop(j)
-                        break
-                
-                # 如果不在当前队列中，则添加新任务
-                if not found_in_current:
-                    updated_tasks.append((i + 1, kw))
-                    processed_keywords.add(kw)
-                    queued_keywords.add(kw)  # 添加到已入队集合
-            
-            # 然后处理当前队列中不在传入列表中的任务
+            # 更新匹配到的关键词的优先级
             for priority, kw in current_tasks:
-                if kw not in processed_keywords:
-                    # 不在传入列表中的任务，优先级降低
+                if priority == 0:
+                    # 保持优先级为0的任务
+                    processed_keywords.add(kw) 
+                    updated_tasks.append((priority, kw))
+                elif kw in upcoming_keywords:
+                    new_priority = upcoming_keywords.index(kw) + 1
+                    updated_tasks.append((new_priority, kw))
+                    processed_keywords.add(kw)
+                else:
+                    # 不在列表中的任务，优先级降低
                     updated_tasks.append((len(upcoming_keywords) + 1, kw))
+                    processed_keywords.add(kw)
+
+            # 添加新的、不在队列中的关键词
+            for i, kw in enumerate(upcoming_keywords):
+                if kw not in processed_keywords and kw in keywords_to_process:
+                    updated_tasks.append((i + 1, kw))
 
         # 将更新后的任务重新放入队列
         for priority, kw in updated_tasks:
             task_queue.put((priority, kw))
-            
-        #print(f"DEBUG_QUEUE: 队列重组完成，当前任务数: {len(updated_tasks)}, 已入队关键词数: {len(queued_keywords)}")
+
 
 def get_upcoming_cards(card, deck_name):
     """使用V3调度器API获取接下来的卡片的关键词，并过滤掉已经有缓存的关键词"""
@@ -488,7 +459,7 @@ def stop_worker():
     print("DEBUG: Stopping sentence worker manager and thread pool...")
     stop_event.set() # 通知 _sentence_worker_manager 停止
 
-    # 清空队列和已入队集合
+    # 清空队列
     while not task_queue.empty():
         try:
             _ = task_queue.get_nowait()
@@ -498,29 +469,17 @@ def stop_worker():
         except Exception as e:
             print(f"Error clearing queue during stop: {e}")
             break
-    
-    # 清空已入队关键词集合
-    queued_keywords.clear()
-    print("DEBUG: 已清空已入队关键词集合")
 
-    # 等待 manager_thread 结束
-    if manager_thread and manager_thread.is_alive():
-        manager_thread.join(timeout=5)
-        if manager_thread.is_alive():
-            print("WARNING: Sentence worker manager thread did not stop gracefully.")
-    
-    # 关闭线程池
+    # 立即关闭线程池，不等待任务完成
     if executor:
-        executor.shutdown(wait=True, cancel_futures=False)
-        print("DEBUG: Thread pool shutdown complete.")
+        executor.shutdown(wait=False, cancel_futures=True)
+        print("DEBUG: Thread pool shutdown initiated (immediate termination).")
         executor = None
         
+    # 不等待 manager_thread，直接结束
     manager_thread = None # 清理 manager_thread 引用
     
-    if executor is None:
-        print("DEBUG: All workers stopped and cleaned up.")
-    else:
-        print("DEBUG: Worker (executor) not running or already stopped, or cleanup issue.")
+    print("DEBUG: All workers stopped immediately without waiting for completion.")
 
 def register_hooks():
     """注册所有需要的钩子，并启动工作线程"""

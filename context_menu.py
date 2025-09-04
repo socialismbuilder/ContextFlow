@@ -52,7 +52,18 @@ def on_webview_context_menu(webview, menu):
     处理网页视图的右键菜单事件
     """
     global selected_word,showing_sentence, showing_translation
-    current_deck = mw.col.decks.name(mw.reviewer.card.did)
+    
+    # 检查是否在复习模式下且有当前卡片
+    try:
+        if mw.reviewer and mw.reviewer.card:
+            current_deck = mw.col.decks.name(mw.reviewer.card.did)
+        else:
+            # 不在复习模式，直接返回不添加菜单项
+            return
+    except AttributeError:
+        # 处理 reviewer 或 card 为 None 的情况
+        return
+    
     config = get_config()
     config_deck_name = config.get("deck_name")
     field_index_match = re.search(r'\[(\d+)\]$', config_deck_name)
