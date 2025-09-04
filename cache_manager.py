@@ -10,6 +10,12 @@ ADDON_FOLDER = os.path.dirname(__file__)
 CACHE_FILE = os.path.join(ADDON_FOLDER, "sentence_cache.json")
 DB_FILE = os.path.join(ADDON_FOLDER, "sentence_cache.db")
 
+# 新增: 内存缓存层
+# 这是一个简单的字典，用于在Anki运行时缓存已从数据库加载的例句。
+# 结构: {'word': [ [sentence, translation], ... ], ...}
+_memory_cache = {}
+
+
 def _init_db():
     """初始化数据库表"""
     try:
@@ -64,13 +70,21 @@ def _get_db_connection():
 
 def load_cache(word=None):
     """
-    加载例句缓存
+    # 修改: 加载例句缓存，优先从内存缓存读取。
     如果提供word参数，则返回该单词的例句翻译对
-    如果不提供word参数，则返回整个缓存（为了兼容旧接口）
     """
+    if not word:
+        return None
+
+    # 1. 检查内存缓存 (Cache Hit)
+    if word in _memory_cache:
+        # print(f"DEBUG: 内存缓存命中 '{word}'")
+        return _memory_cache[word]
+
+    # 2. 内存缓存未命中 (Cache Miss)，从数据库加载
+    # print(f"DEBUG: 内存缓存未命中 '{word}'，从数据库加载。")
     _init_db()
     
-    # 根据单词查询例句翻译对
     try:
         conn = _get_db_connection()
         if conn is None:
@@ -81,8 +95,13 @@ def load_cache(word=None):
         conn.close()
         
         if row:
-            return json.loads(row['sentence_pairs'])
+            sentence_pairs = json.loads(row['sentence_pairs'])
+            # 3. 将从数据库加载的数据存入内存缓存
+            _memory_cache[word] = sentence_pairs
+            return sentence_pairs
         else:
+            # 即使数据库中没有，也缓存这个“空”结果，避免对不存在的词反复查询数据库
+            _memory_cache[word] = []
             return []
     except Exception as e:
         print(f"ERROR: 查询单词'{word}'缓存失败：{str(e)}")
@@ -90,32 +109,37 @@ def load_cache(word=None):
 
 def save_cache(word, sentence_pairs=None):
     """
-    保存例句缓存
+    # 修改: 保存例句缓存，并在成功后更新内存缓存。
     如果提供word和sentence_pairs，则保存该单词的例句翻译对（合并现有数据）
     如果只提供word，则删除该单词的缓存（为了兼容旧接口）
     """
     _init_db()
+    
+    # 先加载现有缓存（会优先走内存缓存），合并现有例句和新例句
+    existing_pairs = load_cache(word)
+    final_pairs = existing_pairs
+    if sentence_pairs:
+        final_pairs = existing_pairs + sentence_pairs
+    
+    sentence_count = len(final_pairs)
+
     try:
         conn = _get_db_connection()
         if conn is None:
             return False
         cursor = conn.cursor()
         
-        # 先加载现有缓存，合并现有例句和新例句
-        existing_pairs = load_cache(word)
-        if existing_pairs and sentence_pairs:
-            # 合并现有例句和新例句
-            sentence_pairs = existing_pairs + sentence_pairs
-        
-        # 计算句子数量
-        sentence_count = len(sentence_pairs) if sentence_pairs else 0
-
         cursor.execute('''
             INSERT OR REPLACE INTO cache (word, sentence_pairs, sentence_count, updated_at)
             VALUES (?, ?, ?, CURRENT_TIMESTAMP)
-        ''', (word, json.dumps(sentence_pairs, ensure_ascii=False), sentence_count))
+        ''', (word, json.dumps(final_pairs, ensure_ascii=False), sentence_count))
         conn.commit()
         conn.close()
+        
+        # 新增: 数据库写入成功后，更新内存缓存以保持同步
+        _memory_cache[word] = final_pairs
+        # print(f"DEBUG: 内存缓存已更新 '{word}'")
+        
         return True
     except Exception as e:
         error_msg = f"保存单词'{word}'缓存失败：{str(e)}"
@@ -125,75 +149,81 @@ def save_cache(word, sentence_pairs=None):
 
 def pop_cache(word):
     """
-    原子性地取出并删除第一个例句对
+    # 修改: 原子性地取出并删除第一个例句对，并在成功后更新内存缓存。
     返回取出的例句对 [sentence, translation]，如果没有例句对则返回 None
     """
     _init_db()
+    
+    conn = None # 确保 conn 在 try 外部可见
     try:
         conn = _get_db_connection()
         if conn is None:
             return None
         
         cursor = conn.cursor()
-        
-        # 开始事务
         cursor.execute("BEGIN TRANSACTION")
         
-        # 获取当前缓存
         cursor.execute("SELECT sentence_pairs FROM cache WHERE word = ?", (word,))
         row = cursor.fetchone()
         
         if not row:
-            conn.commit()
-            conn.close()
+            conn.commit() # 提交空事务
+            # 新增: 如果数据库中没有，也确保内存缓存中没有
+            if word in _memory_cache:
+                del _memory_cache[word]
             return None
         
         sentence_pairs = json.loads(row['sentence_pairs'])
         if not sentence_pairs:
-            # 如果没有例句对，删除该记录
             cursor.execute("DELETE FROM cache WHERE word = ?", (word,))
             conn.commit()
-            conn.close()
+            # 新增: 更新内存缓存
+            if word in _memory_cache:
+                del _memory_cache[word]
             return None
         
-        # 取出第一个例句对
         popped_pair = sentence_pairs.pop(0)
         
-        # 更新缓存
         if sentence_pairs:
-            # 还有剩余例句对，更新缓存
+            new_sentence_pairs_json = json.dumps(sentence_pairs, ensure_ascii=False)
+            new_count = len(sentence_pairs)
             cursor.execute('''
                 UPDATE cache 
                 SET sentence_pairs = ?, sentence_count = ?, updated_at = CURRENT_TIMESTAMP
                 WHERE word = ?
-            ''', (json.dumps(sentence_pairs, ensure_ascii=False), len(sentence_pairs), word))
+            ''', (new_sentence_pairs_json, new_count, word))
         else:
-            # 没有剩余例句对，删除记录
             cursor.execute("DELETE FROM cache WHERE word = ?", (word,))
         
         conn.commit()
-        conn.close()
+        
+        # 新增: 数据库操作成功后，更新内存缓存
+        _memory_cache[word] = sentence_pairs
+        # print(f"DEBUG: 内存缓存已因 pop 操作更新 '{word}'")
+        
         return popped_pair
         
     except Exception as e:
         error_msg = f"取出单词'{word}'缓存失败：{str(e)}"
         aqt.utils.showInfo(error_msg)
         print(f"ERROR: {error_msg}")
-        try:
-            conn.rollback()
-            conn.close()
-        except:
-            pass
+        if conn:
+            try:
+                conn.rollback()
+            except Exception as rb_e:
+                print(f"ERROR: 回滚事务失败: {rb_e}")
         return None
+    finally:
+        if conn:
+            conn.close()
+
 
 def clear_cache():
     """
-    清除例句缓存（同时删除数据库文件和JSON缓存文件）
+    # 修改: 清除所有缓存，包括数据库文件和内存缓存。
     返回操作是否成功 (True/False)
     """
     try:
-        success = True
-        
         # 删除数据库文件
         if os.path.exists(DB_FILE):
             os.remove(DB_FILE)
@@ -204,7 +234,12 @@ def clear_cache():
             os.remove(CACHE_FILE)
             print(f"DEBUG: 已删除JSON缓存文件 {os.path.basename(CACHE_FILE)}")
         
-        aqt.utils.showInfo("已成功清除所有缓存文件")
+        # 新增: 清空内存缓存
+        global _memory_cache
+        _memory_cache.clear()
+        print("DEBUG: 内存缓存已清空。")
+        
+        aqt.utils.showInfo("已成功清除所有缓存文件和内存缓存")
         return True
         
     except Exception as e:

@@ -144,8 +144,8 @@ def unregister_context_menu():
     """
     try:
         from aqt import gui_hooks
-        if on_webview_context_menu in gui_hooks.webview_will_show_context_menu:
-            gui_hooks.webview_will_show_context_menu.remove(on_webview_context_menu)
+        # 直接尝试移除钩子，不检查是否在列表中
+        gui_hooks.webview_will_show_context_menu.remove(on_webview_context_menu)
         print("DEBUG: 右键菜单钩子取消注册成功")
     except Exception as e:
         print(f"ERROR: 取消注册右键菜单钩子失败: {e}")
