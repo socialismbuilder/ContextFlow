@@ -102,6 +102,10 @@ def _sentence_worker_manager():
             continue # 队列为空，继续循环等待
         except Exception as e:
             print(f"ERROR: Error getting/submitting task from/to queue: {e}")
+            # 如果提交失败，从processing_keywords中移除关键词
+            with cache_lock:
+                if 'keyword' in locals() and keyword in processing_keywords:
+                    processing_keywords.remove(keyword)
             try:
                 task_queue.task_done() # 尝试标记任务完成以避免队列阻塞
             except ValueError:
@@ -128,17 +132,23 @@ def clean_html(raw_string):
 
 
 
-def reorganize_task_queue(keywords):
+def reorganize_task_queue(keywords, is_repopulate=False):
     """
     重组任务队列，根据提供的关键词（单个或列表）调整优先级。
+    is_repopulate: 如果为True，表示是由于缓存用尽而重新生成，优先级最低。
     """
     with cache_lock:
         # 筛选出不在缓存中且不在处理中的关键词
         if isinstance(keywords, str):
             # 单个关键词
-            keywords_to_process = [keywords] if not load_cache(keywords) and keywords not in processing_keywords else []
+            if is_repopulate:
+                # 如果是重新生成任务，不检查缓存，只检查是否正在处理
+                keywords_to_process = [keywords] if keywords not in processing_keywords else []
+            else:
+                # 正常情况，检查缓存和是否正在处理
+                keywords_to_process = [keywords] if not load_cache(keywords) and keywords not in processing_keywords else []
         else:
-            # 关键词列表
+            # 关键词列表 (预加载逻辑)
             keywords_to_process = [kw for kw in keywords if not load_cache(kw) and kw not in processing_keywords]
 
         if not keywords_to_process:
@@ -154,19 +164,24 @@ def reorganize_task_queue(keywords):
         processed_keywords = set()
 
         if isinstance(keywords, str):
-            # 单个关键词，优先级为0
             keyword = keywords
-            # 检查队列中是否已存在该任务
+            # 根据is_repopulate设置优先级，最低优先级使用999
+            target_priority = 999 if is_repopulate else 0 
+            
             task_found = False
             for priority, kw in current_tasks:
                 if kw == keyword:
-                    updated_tasks.append((0, kw))
+                    # 如果是重新生成任务，更新其优先级
+                    if is_repopulate:
+                        updated_tasks.append((target_priority, kw))
+                    else:
+                        updated_tasks.append((0, kw)) # 保持最高优先级
                     task_found = True
                 else:
                     updated_tasks.append((priority, kw))
             if not task_found and keyword in keywords_to_process:
-                print(f"DEBUG: 新任务添加到队列: {keyword} (优先级: 0)")
-                updated_tasks.append((0, keyword))
+                print(f"DEBUG: 新任务添加到队列: {keyword} (优先级: {target_priority})")
+                updated_tasks.append((target_priority, keyword))
         else:
             # 关键词列表
             upcoming_keywords = keywords
@@ -308,6 +323,12 @@ def on_card_render(html: str, card: Card, context: str) -> str:
                     config_manager.showing_sentence = showing_sentence
                     config_manager.showing_translation = showing_translation
                     html_to_return = Process_front_html(current_sentence) # Set HTML for return
+                    
+                    # 新增逻辑：如果缓存已用尽，则以最低优先级重新加入队列
+                    if not load_cache(keyword):
+                        print(f"DEBUG: 关键词 '{keyword}' 缓存已用尽，以最低优先级重新加入队列。")
+                        reorganize_task_queue(keyword, is_repopulate=True)
+
                 except Exception as e:
                     error_type = type(e).__name__
                     error_msg = f"处理缓存时发生意外错误 ({error_type})：{str(e)}"
@@ -446,7 +467,7 @@ def start_worker():
 
 def stop_worker():
     """停止后台例句生成工作线程（单个线程池和管理器）"""
-    global executor, manager_thread
+    global executor, manager_thread, processing_keywords
 
     # 取消注册选中词汇例句生成功能的右键菜单
     try:
@@ -459,16 +480,19 @@ def stop_worker():
     print("DEBUG: Stopping sentence worker manager and thread pool...")
     stop_event.set() # 通知 _sentence_worker_manager 停止
 
-    # 清空队列
-    while not task_queue.empty():
-        try:
-            _ = task_queue.get_nowait()
-            task_queue.task_done()
-        except queue.Empty:
-            break
-        except Exception as e:
-            print(f"Error clearing queue during stop: {e}")
-            break
+    # 清空队列和正在处理的关键词集合
+    with cache_lock:
+        while not task_queue.empty():
+            try:
+                _ = task_queue.get_nowait()
+                task_queue.task_done()
+            except queue.Empty:
+                break
+            except Exception as e:
+                print(f"Error clearing queue during stop: {e}")
+                break
+        # 清空正在处理的关键词集合
+        processing_keywords.clear()
 
     # 立即关闭线程池，不等待任务完成
     if executor:
