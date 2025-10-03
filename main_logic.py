@@ -15,7 +15,7 @@ from . import config_manager
 from .config_manager import get_config
 from .cache_manager import load_cache, save_cache, clear_cache, pop_cache
 from .api_client import generate_ai_sentence
-from .Process_Card import Process_back_html,Process_front_html
+from .card_template_manager import get_processed_back_html, get_processed_front_html
 from .stats import add_stats
 from aqt.utils import tooltip # 导入 tooltip
 # --- 后台任务队列 ---
@@ -322,7 +322,7 @@ def on_card_render(html: str, card: Card, context: str) -> str:
                     #print(f"DEBUG: 显示 '{keyword}' 的缓存句子")
                     config_manager.showing_sentence = showing_sentence
                     config_manager.showing_translation = showing_translation
-                    html_to_return = Process_front_html(current_sentence) # Set HTML for return
+                    html_to_return = get_processed_front_html(current_sentence) # Set HTML for return
                     
                     # 新增逻辑：如果缓存已用尽，则以最低优先级重新加入队列
                     if not load_cache(keyword):
@@ -336,7 +336,7 @@ def on_card_render(html: str, card: Card, context: str) -> str:
                     aqt.utils.showInfo(error_msg)
                     showing_sentence = "缓存处理错误"
                     showing_translation = ""
-                    html_to_return = Process_front_html(showing_sentence) # Set error HTML
+                    html_to_return = get_processed_front_html(showing_sentence) # Set error HTML
 
             # 如果设置了 html_to_return（缓存命中或错误），则跳过缓存未命中逻辑
             if html_to_return is None:
@@ -402,7 +402,7 @@ def on_card_render(html: str, card: Card, context: str) -> str:
                 # 设置初始显示状态
                 showing_sentence = "例句生成中..."
                 showing_translation = ""
-                html_to_return = Process_front_html(showing_sentence)
+                html_to_return = get_processed_front_html(showing_sentence)
 
             # --- Preloading Logic (Runs AFTER determining initial HTML) ---
             try:
@@ -421,7 +421,7 @@ def on_card_render(html: str, card: Card, context: str) -> str:
         elif state == 'answer':
             # 如果是显示答案面，显示之前问题面生成的例句 + 对应的翻译
             # showing_sentence 和 showing_translation 包含了需要显示的内容
-            return Process_back_html(showing_sentence, showing_translation, html) # 使用全局变量
+            return get_processed_back_html(showing_sentence, showing_translation, html) # 使用全局变量
 
         # --- 结束状态判断 ---
 

@@ -12,6 +12,7 @@ from aqt.qt import (
 from .config_manager import get_config, save_config
 from .cache_manager import clear_cache
 from . import api_client
+from .card_template_manager import update_card_templates
 from PyQt6.QtCore import QTimer
 
 # Custom ComboBox to ignore wheel events
@@ -194,6 +195,21 @@ def add_othersetting(parent_dialog, basic_layout, current_config):
     learning_options_layout.addStretch()
 
     other_layout.addRow("学习选项:", learning_options_layout)
+
+    # 添加字体选择
+    parent_dialog.font_combo = NoWheelComboBox()
+    PRESET_FONTS = current_config.get("preset_fonts", ["默认字体", "tms论文字体", "考试字体（衬线）"])
+    parent_dialog.font_combo.addItems(PRESET_FONTS)
+    saved_font = current_config.get("font_family", "默认字体")
+    if saved_font in PRESET_FONTS:
+        parent_dialog.font_combo.setCurrentText(saved_font)
+    else:
+        parent_dialog.font_combo.setCurrentText("默认字体")
+    
+    # 连接字体变化事件，以便更新卡片模板
+    parent_dialog.font_combo.currentTextChanged.connect(lambda: _on_font_changed(parent_dialog))
+    
+    other_layout.addRow("字体选择:", parent_dialog.font_combo)
 
     other_group.setLayout(other_layout)
     basic_layout.addWidget(other_group)
@@ -401,7 +417,8 @@ def save_basic_settings(parent_dialog):
         "difficulty_level": _get_combo_value(parent_dialog.difficulty_combo, getattr(parent_dialog, 'difficulty_custom', None)),
         "sentence_length_desc": _get_combo_value(parent_dialog.length_combo, getattr(parent_dialog, 'length_custom', None)),
         "learning_language": parent_dialog.learning_language_combo.currentText(),
-        "prompt_name": parent_dialog.prompt_name_combo.currentText()
+        "prompt_name": parent_dialog.prompt_name_combo.currentText(),
+        "font_family": parent_dialog.font_combo.currentText(),
     }
 
     current_full_config = get_config()
@@ -410,3 +427,27 @@ def save_basic_settings(parent_dialog):
             new_config[key] = current_full_config[key]
 
     save_config(new_config)
+    
+    # 保存配置后更新卡片模板
+    _update_card_templates_with_notification(parent_dialog)
+
+def _on_font_changed(parent_dialog):
+    """
+    字体设置变化时的处理函数
+    """
+    # 实时更新卡片模板，不需要等待保存
+    _update_card_templates_with_notification(parent_dialog)
+
+def _update_card_templates_with_notification(parent_dialog):
+    """
+    更新卡片模板并显示通知
+    """
+    try:
+        success = update_card_templates()
+        if success:
+            # 可以选择显示一个通知，但为了避免频繁打扰，这里只在控制台输出
+            print("SUCCESS: 卡片模板已根据字体设置更新")
+        else:
+            print("WARNING: 更新卡片模板失败")
+    except Exception as e:
+        print(f"ERROR: 更新卡片模板时出错: {e}")
