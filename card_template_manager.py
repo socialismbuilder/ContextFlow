@@ -12,7 +12,7 @@ def get_font_css():
     
     if font_family == "tms论文字体":
         font_css = """
-            font-family: 'Times New Roman', Times, 
+            font-family: 'Times New Roman', Times,
                          'Noto Serif SC', /* 思源宋体-中文 */
                          'Source Han Serif', /* 源样明体-中日韩 */
                          'SimSun', /* 宋体-中文 */
@@ -28,8 +28,12 @@ def get_font_css():
                          'Source Han Serif', /* 源样明体-中日韩 */
                          'Times New Roman', Times;
         """
+    elif font_family == "默认字体":
+        # 默认字体
+        font_css = "font-weight: bold;"
     else:
-        font_css = ""  # 默认字体使用系统默认
+        # 其他字体，添加加粗样式
+        font_css = "font-weight: bold;"
     
     # 清理CSS格式（移除多余空格和换行）
     return ' '.join(font_css.split())
@@ -63,7 +67,6 @@ def get_base_css():
         }
         .card-text {
             font-size: 36px;
-            font-weight: bold;
             line-height: 1.3;
             margin-bottom: 10px;
             color: black;
