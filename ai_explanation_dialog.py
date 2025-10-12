@@ -376,7 +376,10 @@ class AIExplanationDialog(QDialog):
         if "qwen3" in self.model_name.lower():
             system_prompt += "\n/no_think"
             
-        self.conversation_history = [{"role": "system", "content": system_prompt}]
+        self.conversation_history = [
+            {"role": "system", "content": ""},
+            {"role": "user", "content": system_prompt}
+        ]
         self.send_message_to_ai()
 
     def send_message(self):
