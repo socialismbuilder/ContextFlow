@@ -36,6 +36,13 @@ def _process_keyword_task(keyword_with_priority):
     """处理单个关键词生成任务（由线程池中的线程调用）"""
     priority, keyword = keyword_with_priority  # 解包优先级和关键词
 
+    # 检查停止事件，如果已设置则直接退出，避免在退出时执行耗时的API调用
+    if stop_event.is_set():
+        print(f"DEBUG: 停止事件已设置，跳过处理关键词: {keyword}")
+        with cache_lock:
+            if keyword in processing_keywords:
+                processing_keywords.remove(keyword)
+        return
 
     config = get_config() # 在每次处理任务前获取最新的配置
     print(f"DEBUG:正在处理关键词: {keyword} (优先级: {priority})")
@@ -55,7 +62,8 @@ def _process_keyword_task(keyword_with_priority):
         traceback.print_exc() # 打印详细的回溯信息
     finally:
         with cache_lock:
-            processing_keywords.remove(keyword) # 无论成功或失败，都从集合中移除
+            if keyword in processing_keywords:
+                processing_keywords.remove(keyword) # 无论成功或失败，都从集合中移除
         pass # task_done 将在 _sentence_worker_manager 中处理
 
 
@@ -504,21 +512,22 @@ def stop_worker():
         # 清空正在处理的关键词集合
         processing_keywords.clear()
 
-    # 关闭线程池，先等待一段时间让任务完成
+    # 立即关闭线程池，不等待任务完成（避免退出时卡死）
     if executor:
-        print("DEBUG: Initiating graceful thread pool shutdown...")
+        print("DEBUG: Initiating immediate thread pool shutdown...")
         # 先设置停止事件，让工作线程停止获取新任务
         stop_event.set()
         
-        # anki目前版本的python弃用了timeout参数，改为直接shutdown并等待
-        executor.shutdown(wait=True)
-        print("DEBUG: Thread pool shutdown completed.")
+        # 立即关闭线程池，不等待任务完成
+        # 在Anki退出时，我们优先保证快速退出而不是完成任务
+        executor.shutdown(wait=False)
+        print("DEBUG: Thread pool shutdown completed (immediate).")
         executor = None
         
     # 清理 manager_thread 引用
     manager_thread = None
     
-    print("DEBUG: All workers stopped gracefully.")
+    print("DEBUG: All workers stopped immediately.")
 
 def register_hooks():
     """注册所有需要的钩子，并延迟启动工作线程"""
