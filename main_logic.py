@@ -24,6 +24,7 @@ processing_keywords = set() # 存储正在处理的关键词
 cache_lock = threading.Lock() # 用于保护缓存访问和队列检查/添加
 stop_event = threading.Event()
 executor = None # 使用单个线程池
+max_workers = 0 # 存储线程池的最大工作线程数
 Occupy_bar = False
 # --- 结束后台任务队列 ---
 
@@ -60,24 +61,32 @@ def _process_keyword_task(keyword_with_priority):
 
 def _sentence_worker_manager():
     """后台工作线程管理器，从队列中获取任务并提交到线程池"""
-    global executor
+    global executor, max_workers
     if executor is None:
         print("ERROR: Thread pool executor not initialized in _sentence_worker_manager.")
         return
 
     while not stop_event.is_set():
         try:
-            # 检查线程池是否有空闲线程
-            if executor._work_queue.qsize() >= executor._max_workers:
+            # 检查线程池是否有空闲线程（使用保存的max_workers变量，避免内部属性访问）
+            if executor._work_queue.qsize() >= max_workers:
                 # 线程池已满，等待一段时间再检查
                 time.sleep(0.1)
                 continue
+            
+            # 减少锁的持有时间，只在必要时获取锁
+            try:
+                priority, keyword = task_queue.get(timeout=0.1) # 增加超时时间
+            except queue.Empty:
+                continue
+                
+            # 检查关键词是否正在处理，如果是则跳过
             with cache_lock:
-                priority, keyword = task_queue.get(timeout=0) # 解包
-                if keyword in processing_keywords: # 检查关键词是否正在处理
+                if keyword in processing_keywords:
                     task_queue.task_done()
                     continue
                 processing_keywords.add(keyword)
+            
             keyword_with_priority = (priority, keyword) # 重新打包以传递
 
             # 提交任务到线程池
@@ -89,7 +98,8 @@ def _sentence_worker_manager():
                 
                 # --- 添加 tooltip 逻辑 ---
                 # 使用队列大小减去正在处理的任务数量来计算剩余任务
-                remaining_tasks = task_queue.qsize() + len(processing_keywords)
+                with cache_lock:
+                    remaining_tasks = task_queue.qsize() + len(processing_keywords)
                 message = f"后台缓存+1，生成队列剩余: {remaining_tasks} 个。"
                 # 使用 taskman.run_on_main 确保在主线程中调用 tooltip
                 aqt.mw.taskman.run_on_main(lambda: tooltip(message, period=2000,parent=mw))
@@ -212,9 +222,9 @@ def reorganize_task_queue(keywords, is_repopulate=False):
 
 def get_upcoming_cards(card, deck_name):
     """使用V3调度器API获取接下来的卡片的关键词，并过滤掉已经有缓存的关键词"""
-    # 检查是否为单线程模式（通过executor的线程数判断）
-    global executor
-    is_single_threaded = executor is not None and executor._max_workers == 1
+    # 检查是否为单线程模式（通过保存的max_workers变量判断）
+    global executor, max_workers
+    is_single_threaded = executor is not None and max_workers == 1
     
     # 如果是单线程模式，获取100张卡片；否则获取10张
     fetch_limit = 100 if is_single_threaded else 10
@@ -381,17 +391,17 @@ def on_card_render(html: str, card: Card, context: str) -> str:
                             Occupy_bar = False
                             return
 
-                    # 检查缓存（主线程安全）
-                    with cache_lock:
-                        sentence_pairs = load_cache(keyword)
-                        if sentence_pairs:
-                            timer.stop()  # 停止QTimer
-                            mw.progress.finish()
-                            # 取出第一个例句对并更新缓存
-                            if mw.reviewer and mw.reviewer.card and mw.reviewer.card.id == card.id:
-                                Occupy_bar = False
-                                mw.reset()
-                            return
+                    # 检查缓存（避免在主线程长时间持有锁）
+                    # 直接调用load_cache，它内部已经处理了线程安全
+                    sentence_pairs = load_cache(keyword)
+                    if sentence_pairs:
+                        timer.stop()  # 停止QTimer
+                        mw.progress.finish()
+                        # 取出第一个例句对并更新缓存
+                        if mw.reviewer and mw.reviewer.card and mw.reviewer.card.id == card.id:
+                            Occupy_bar = False
+                            mw.reset()
+                        return
                 
                 global Occupy_bar
                 Occupy_bar = True
@@ -439,7 +449,7 @@ def on_card_render(html: str, card: Card, context: str) -> str:
 
 def start_worker():
     """启动后台例句生成工作线程（使用单个线程池）"""
-    global executor, manager_thread
+    global executor, manager_thread, max_workers
     if executor is None:
         stop_event.clear()
         
@@ -455,7 +465,7 @@ def start_worker():
             max_workers = 3
             print("DEBUG: 使用多线程模式（3个线程）")
         
-        # 创建单个线程池
+        # 创建单个线程池，并保存max_workers到全局变量
         executor = concurrent.futures.ThreadPoolExecutor(max_workers=max_workers, thread_name_prefix='SentenceWorker')
         
         manager_thread = threading.Thread(target=_sentence_worker_manager, daemon=True)
@@ -494,22 +504,26 @@ def stop_worker():
         # 清空正在处理的关键词集合
         processing_keywords.clear()
 
-    # 立即关闭线程池，不等待任务完成
+    # 关闭线程池，先等待一段时间让任务完成
     if executor:
-        executor.shutdown(wait=False, cancel_futures=True)
-        print("DEBUG: Thread pool shutdown initiated (immediate termination).")
+        print("DEBUG: Initiating graceful thread pool shutdown...")
+        # 先设置停止事件，让工作线程停止获取新任务
+        stop_event.set()
+        
+        # 尝试关闭，等待现有任务完成（最多等待5秒）
+        executor.shutdown(wait=True, timeout=5)
+        print("DEBUG: Thread pool shutdown completed.")
         executor = None
         
-    # 不等待 manager_thread，直接结束
-    manager_thread = None # 清理 manager_thread 引用
+    # 清理 manager_thread 引用
+    manager_thread = None
     
-    print("DEBUG: All workers stopped immediately without waiting for completion.")
+    print("DEBUG: All workers stopped gracefully.")
 
 def register_hooks():
-    """注册所有需要的钩子，并启动工作线程"""
+    """注册所有需要的钩子，并延迟启动工作线程"""
     gui_hooks.card_will_show.append(on_card_render)
     gui_hooks.profile_will_close.append(stop_worker) # 注册停止函数
-    gui_hooks.profile_did_open.append(start_worker)
     gui_hooks.stats_dialog_will_show.append(add_stats) # 添加统计钩子
 
     # 注册选中词汇例句生成功能的右键菜单
@@ -520,4 +534,6 @@ def register_hooks():
     except Exception as e:
         print(f"ERROR: 注册选中词汇例句生成功能失败: {e}")
 
-    start_worker() # 启动工作线程
+    # 延迟启动工作线程，确保Anki完全初始化
+    from PyQt6.QtCore import QTimer
+    QTimer.singleShot(1000, start_worker) # 延迟1秒启动
