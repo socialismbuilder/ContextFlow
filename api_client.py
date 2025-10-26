@@ -138,8 +138,8 @@ def get_top_difficulty_keywords():
             print("ERROR: 未获取到有效牌组名称")
             return []
 
-        # 查询条件：目标牌组中复习且难度≥0.6的卡片
-        query = f"deck:{deck_name} is:review prop:d>=0.6"
+        # 查询条件：目标牌组中复习且难度≥0.6且可提取性小于0.9的卡片
+        query = f"deck:{deck_name} is:review prop:d>=0.6 prop:r<0.9"
         card_ids = aqt.mw.col.find_cards(query)
         if not card_ids:
             print("INFO: 牌组中无符合条件的复习卡片")
