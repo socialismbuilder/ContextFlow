@@ -510,8 +510,8 @@ def stop_worker():
         # 先设置停止事件，让工作线程停止获取新任务
         stop_event.set()
         
-        # 尝试关闭，等待现有任务完成（最多等待5秒）
-        executor.shutdown(wait=True, timeout=5)
+        # anki目前版本的python弃用了timeout参数，改为直接shutdown并等待
+        executor.shutdown(wait=True)
         print("DEBUG: Thread pool shutdown completed.")
         executor = None
         
