@@ -234,8 +234,8 @@ def get_upcoming_cards(card, deck_name):
     global executor, max_workers
     is_single_threaded = executor is not None and max_workers == 1
     
-    # 如果是单线程模式，获取100张卡片；否则获取10张
-    fetch_limit = 100 if is_single_threaded else 10
+    # 如果是单线程模式，获取100张卡片；否则获取20张
+    fetch_limit = 100 if is_single_threaded else 20
     
     # 使用V3调度器API获取队列中的卡片
     output = mw.col.sched.get_queued_cards(fetch_limit=fetch_limit, intraday_learning_only=False)
