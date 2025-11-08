@@ -354,7 +354,7 @@ def generate_ai_sentence(config, keyword, prompt=None):
             top_difficulty_keywords) >= 10 else top_difficulty_keywords
         # 转换为逗号分隔的字符串格式
         second_keywords_str = ", ".join(second_keywords)
-        second_keywords_str = "- 在保证句子流畅的前提下，可以在每个例句中尝试融入若干以下词汇（" + second_keywords_str + "），不限制每句融入几个，也不强制融入，但必须以句子自然流畅为前提。"
+        second_keywords_str = "- 在保证句子流畅的前提下，可以在每个例句中尝试融入若干以下词汇(" + second_keywords_str + ")，不限制每句融入几个，不得强制融入牺牲流传性，0-3个为佳，必须以句子自然流畅为前提。"
 
     vocab_level = config.get("vocab_level", DEFAULT_CONFIG["vocab_level"])
     learning_goal = config.get("learning_goal", DEFAULT_CONFIG["learning_goal"])
