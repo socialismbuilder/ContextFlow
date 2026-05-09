@@ -1,4 +1,6 @@
 import aqt
+import re
+import html
 # 插件的 __name__，用于访问 Anki 配置
 ADDON_NAME = __name__.split('.')[0] # 获取顶级包名
 
@@ -29,3 +31,13 @@ def save_config(new_config):
     
     # 直接使用插件名保存配置
     aqt.mw.addonManager.writeConfig(ADDON_NAME, filtered_config)
+
+
+def clean_html(raw_string):
+    """
+    清洗 HTML 内容：移除标签、方括号内容、解码实体、去首尾空格
+    """
+    no_html = re.sub(r'<.*?>', '', raw_string)
+    no_sound = re.sub(r'\[.*?\]', '', no_html)
+    decoded = html.unescape(no_sound)
+    return decoded.strip()

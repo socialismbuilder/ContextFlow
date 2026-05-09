@@ -6,3 +6,5 @@ release/
 .idea/
 .vscode/
 sentence_cache.db2
+pyproject.toml
+.python-version
