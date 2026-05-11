@@ -20,15 +20,21 @@ def get_or_create_deck(deck_name):
 
 def get_or_create_note_type():
     """
-    获取或创建用于例句翻译的笔记类型
+    获取或创建用于例句翻译的笔记类型。
+    已存在时也会刷新模板以保持最新。
     """
     try:
         note_type_name = "ContextFlow例句翻译"
-        
+
         # 检查是否已存在该笔记类型
         existing_models = mw.col.models.all()
         for model in existing_models:
             if model['name'] == note_type_name:
+                # 已存在：刷新模板保持最新
+                template = model['tmpls'][0]
+                template['qfmt'] = get_card_template_front()
+                template['afmt'] = get_card_template_back()
+                mw.col.models.save(model)
                 return model
         
         # 创建新的笔记类型

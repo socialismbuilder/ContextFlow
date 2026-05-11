@@ -8,3 +8,6 @@ release/
 sentence_cache.db2
 pyproject.toml
 .python-version
+.venv/
+*.pyc
+*.pyo

@@ -103,5 +103,8 @@
         "默认字体",
         "tms论文字体",
         "考试字体（衬线）"
-    ]
+    ],
+    "tts_engine": "edge_tts",
+    "tts_custom_url": "",
+    "tts_replace_audio": false
 }

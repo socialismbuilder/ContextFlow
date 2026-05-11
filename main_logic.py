@@ -9,6 +9,7 @@ from . import config_manager
 from .config_manager import get_config, clean_html
 from .cache_manager import load_cache, pop_cache
 from .card_template_manager import get_processed_back_html, get_processed_front_html
+from .tts.tts_manager import tts_manager
 from .stats import add_stats
 from .task_manager import SentenceTaskManager
 
@@ -24,13 +25,15 @@ cache_lock = _task_manager.cache_lock
 stop_event = _task_manager.stop_event
 showing_sentence = ""
 showing_translation = ""
+showing_keyword = ""
 
 
-def _update_showing_state(sentence, translation):
+def _update_showing_state(sentence, translation, keyword=""):
     """同步更新所有存储当前显示句子的位置"""
-    global showing_sentence, showing_translation
+    global showing_sentence, showing_translation, showing_keyword
     showing_sentence = sentence
     showing_translation = translation
+    showing_keyword = keyword
     _task_manager.showing_sentence = sentence
     _task_manager.showing_translation = translation
     config_manager.showing_sentence = sentence
@@ -56,8 +59,8 @@ def _handle_cache_hit(keyword, popped_pair):
     """处理缓存命中：更新显示状态，若缓存耗尽则重新入队。返回 HTML"""
     try:
         sentence, translation = popped_pair
-        _update_showing_state(sentence, translation)
-        html_result = get_processed_front_html(sentence)
+        _update_showing_state(sentence, translation, keyword)
+        html_result = get_processed_front_html(sentence, keyword)
 
         if not load_cache(keyword):
             print(f"DEBUG: 关键词 '{keyword}' 缓存已用尽，以最低优先级重新加入队列。")
@@ -123,7 +126,7 @@ def _handle_cache_miss(keyword):
     timer.timeout.connect(update_ui)
     timer.start(100)
 
-    _update_showing_state("例句生成中...", "")
+    _update_showing_state("例句生成中...", "", keyword)
     return get_processed_front_html("例句生成中...")
 
 
@@ -154,6 +157,24 @@ def _is_target_deck(card, current_deck, base_deck_name):
     return (current_deck == base_deck_name or current_deck.startswith(base_deck_name + "::")) and card.ord == 0
 
 
+def _strip_native_audio(html: str) -> str:
+    """Remove [sound:xxx] tags from HTML to prevent native audio playback."""
+    return re.sub(r'\[sound:[^\]]*\]', '', html)
+
+
+def _auto_play_tts():
+    """Auto-click the word TTS button after card renders."""
+    try:
+        from aqt import mw
+        if mw and mw.reviewer and mw.reviewer.web:
+            mw.reviewer.web.eval(
+                "var btn=document.getElementById('tts-word');"
+                "if(btn)btn.click();"
+            )
+    except Exception:
+        pass
+
+
 def on_card_render(html: str, card: Card, context: str) -> str:
     """卡片渲染钩子，处理问题面和答案面的显示逻辑"""
     config = get_config()
@@ -170,14 +191,27 @@ def on_card_render(html: str, card: Card, context: str) -> str:
     if not _is_target_deck(card, current_deck, base_deck_name):
         return html
 
+    replace_audio = config.get("tts_replace_audio", False)
     state = aqt.mw.reviewer.state if aqt.mw.reviewer else 'unknown'
 
     if state == 'question':
         result = _render_question_side(card, base_deck_name, field_index_match)
-        return result if result is not None else html
+        if result is not None:
+            if replace_audio:
+                QTimer.singleShot(0, _auto_play_tts)
+            return result
+        if replace_audio:
+            #return _strip_native_audio(html)
+            pass
+        return html
 
     if state == 'answer':
-        return get_processed_back_html(showing_sentence, showing_translation, html)
+        result = get_processed_back_html(showing_sentence, showing_translation, html, showing_keyword)
+        if replace_audio:
+            #result = _strip_native_audio(result)
+            pass
+            QTimer.singleShot(0, _auto_play_tts)
+        return result
 
     return html
 
@@ -198,9 +232,94 @@ def stop_worker():
     max_workers = 0
 
 
+def _stop_tts_loading():
+    """Remove loading state from all TTS buttons in the reviewer."""
+    try:
+        from aqt import mw
+        if mw and mw.reviewer and mw.reviewer.web:
+            mw.reviewer.web.eval(
+                "document.querySelectorAll('.tts-btn.loading').forEach(function(el){el.classList.remove('loading')})"
+            )
+    except Exception:
+        pass
+
+
+def _handle_js_message(handled, message, context):
+    """Handle pycmd messages from card HTML via webview_did_receive_js_message."""
+    if not message.startswith("contextflow:"):
+        return handled
+
+    parts = message.split(":", 2)
+    if len(parts) < 3:
+        return handled
+
+    command = parts[1]
+    payload = parts[2]
+
+    if command == "tts":
+        if payload.startswith("sentence:"):
+            text = payload[len("sentence:"):]
+        elif payload.startswith("word:"):
+            text = payload[len("word:"):]
+        else:
+            text = payload
+
+        if text:
+            cached = tts_manager.play_cached(text)
+            if cached:
+                _stop_tts_loading()
+            elif tts_manager.is_anki_native():
+                tts_manager.play_anki_native(text)
+                _stop_tts_loading()
+            else:
+                from aqt import mw
+
+                def on_done(future):
+                    result = future.result()
+                    _stop_tts_loading()
+                    if result:
+                        try:
+                            from aqt.sound import av_player
+                            av_player.play_file(result)
+                        except Exception as e:
+                            print(f"ERROR: TTS play file failed: {e}")
+
+                mw.taskman.run_in_background(
+                    lambda: tts_manager.generate(text),
+                    on_done,
+                )
+        return (True, None)
+
+    return handled
+
+
+def _block_native_audio(card, tags):
+    """Block native card audio autoplay when tts_replace_audio is enabled.
+
+    tags and card.question_av_tags() share the same cached list object,
+    so we cannot mutate tags without breaking manual replay. Instead,
+    save original contents, clear, and schedule restore after play_tags
+    has already been called with the empty list.
+    """
+    if not get_config().get("tts_replace_audio", False):
+        return
+
+    original = tags[:]
+    tags.clear()
+    # Restore after the current event loop cycle so reviewer's
+    # play_tags(sounds) sees an empty list, but card.question_av_tags()
+    # still returns the full list for future manual clicks.
+    from PyQt6.QtCore import QTimer
+    QTimer.singleShot(0, lambda: tags.extend(original))
+
+
 def register_hooks():
     """注册所有需要的钩子，并延迟启动工作线程"""
     gui_hooks.card_will_show.append(on_card_render)
+    gui_hooks.webview_did_receive_js_message.append(_handle_js_message)
+    gui_hooks.reviewer_will_play_question_sounds.append(_block_native_audio)
+    gui_hooks.reviewer_will_play_answer_sounds.append(_block_native_audio)
+
     gui_hooks.profile_will_close.append(stop_worker)
     gui_hooks.stats_dialog_will_show.append(add_stats)
 

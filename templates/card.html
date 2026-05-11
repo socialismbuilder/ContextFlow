@@ -1,0 +1,134 @@
+<style>
+.card-group {
+    border: 1px solid rgba(0, 0, 0, 0.1);
+    border-radius: 8px;
+    padding: 15px;
+    padding-bottom: 38px;
+    margin-bottom: 15px;
+    background: rgba(0, 0, 0, 0.03);
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+    text-align: left;
+    position: relative;
+}
+.night_mode .card-group {
+    border: 1px solid rgba(0, 0, 0, 0.2);
+    background: rgba(0, 0, 0, 0.1);
+}
+.label {
+    font-size: 14px;
+    color: #aaa;
+    margin-bottom: 5px;
+    text-transform: uppercase;
+}
+.night_mode .label {
+    color: #777;
+}
+.card-text {
+    font-size: 36px;
+    line-height: 1.3;
+    margin-bottom: 10px;
+    color: black;
+    {FONT_CSS}
+}
+.night_mode .card-text {
+    color: white;
+}
+.highlight {
+    border-radius:8px;
+    background-color:rgba(255, 150, 150, 0.7);
+    padding:4px 8px;
+}
+.translation-placeholder-line {
+    height:18px;
+    width:80%;
+    background:#e0e0e0;
+    border-radius:9px;
+    margin:0 0 8px 0;
+}
+.translation-placeholder-line:last-child {
+    width:55%;
+    margin:0 0 0 0;
+}
+.night_mode .translation-placeholder-line {
+    background: rgba(128, 128, 128, 0.7);
+}
+.original-card-text {
+    font-size: 24px;
+    line-height: 1.4;
+    opacity: 0.8;
+    color: black;
+}
+.night_mode .original-card-text {
+    color: white;
+}
+.tts-btn-group {
+    position: absolute;
+    bottom: 8px;
+    right: 10px;
+    display: flex;
+    gap: 6px;
+}
+.tts-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    padding: 4px 8px;
+    border: 1px solid rgba(0, 0, 0, 0.12);
+    border-radius: 4px;
+    background: rgba(0, 0, 0, 0.03);
+    cursor: pointer;
+    font-size: 12px;
+    color: #888;
+    user-select: none;
+}
+.tts-btn:hover {
+    background: rgba(0, 0, 0, 0.07);
+    color: #666;
+}
+.tts-btn.loading {
+    opacity: 0.6;
+    pointer-events: none;
+}
+.tts-btn.loading .tts-label {
+    display: none;
+}
+.tts-btn.loading::after {
+    content: '';
+    display: inline-block;
+    width: 12px;
+    height: 12px;
+    border: 2px solid currentColor;
+    border-top-color: transparent;
+    border-radius: 50%;
+    animation: contextflow-spin 0.6s linear infinite;
+}
+@keyframes contextflow-spin {
+    to { transform: rotate(360deg); }
+}
+.night_mode .tts-btn {
+    border-color: rgba(255, 255, 255, 0.12);
+    background: rgba(255, 255, 255, 0.05);
+    color: #777;
+}
+.night_mode .tts-btn:hover {
+    background: rgba(255, 255, 255, 0.09);
+    color: #aaa;
+}
+</style>
+
+<div style="margin: 10px;">
+    <div class="card-group">
+        <div class="label">例句</div>
+        <div class="card-text">{SENTENCE}</div>
+
+        <div class="label" style="margin-top: 15px;">翻译</div>
+        <div class="card-text" style="line-height: 1.4; opacity: 0.9;">{TRANSLATION}</div>
+
+        <div class="tts-btn-group">
+            {WORD_BUTTON}
+            <div class="tts-btn" id="tts-sentence" onclick="this.classList.add('loading');pycmd('contextflow:tts:sentence:{SENTENCE_TEXT}')"><span class="tts-label">朗读例句</span></div>
+        </div>
+    </div>
+
+    {ORIGINAL_CARD_AREA}
+</div>

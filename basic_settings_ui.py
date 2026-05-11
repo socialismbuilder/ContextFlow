@@ -208,8 +208,38 @@ def add_othersetting(parent_dialog, basic_layout, current_config):
     
     # 连接字体变化事件，以便更新卡片模板
     parent_dialog.font_combo.currentTextChanged.connect(lambda: _on_font_changed(parent_dialog))
-    
+
     other_layout.addRow("字体选择:", parent_dialog.font_combo)
+
+    # TTS 设置
+    parent_dialog.tts_engine_combo = NoWheelComboBox()
+    tts_engines = ["edge_tts", "anki_native", "custom_url"]
+    tts_engine_labels = {"edge_tts": "Edge TTS (免费高质量)", "anki_native": "Anki 原生 TTS", "custom_url": "自定义 URL"}
+    parent_dialog.tts_engine_combo.addItems(tts_engine_labels.values())
+    saved_tts = current_config.get("tts_engine", "edge_tts")
+    saved_tts_label = tts_engine_labels.get(saved_tts, "Edge TTS (免费高质量)")
+    parent_dialog.tts_engine_combo.setCurrentText(saved_tts_label)
+
+    parent_dialog.tts_custom_url = QLineEdit(current_config.get("tts_custom_url", ""))
+    parent_dialog.tts_custom_url.setPlaceholderText("POST {text, voice, language} → 返回音频文件")
+
+    tts_engine_widget = QWidget()
+    tts_engine_layout = QVBoxLayout(tts_engine_widget)
+    tts_engine_layout.setContentsMargins(0, 0, 0, 0)
+    tts_engine_layout.addWidget(parent_dialog.tts_engine_combo)
+    tts_engine_layout.addWidget(parent_dialog.tts_custom_url)
+    parent_dialog.tts_custom_url.setVisible(saved_tts == "custom_url")
+
+    parent_dialog.tts_engine_combo.currentTextChanged.connect(
+        lambda text: parent_dialog.tts_custom_url.setVisible("自定义" in text)
+    )
+
+    other_layout.addRow("TTS 引擎:", tts_engine_widget)
+
+    from aqt.qt import QCheckBox
+    parent_dialog.tts_replace_audio = QCheckBox("替代卡片原有声音（自动朗读例句）")
+    parent_dialog.tts_replace_audio.setChecked(current_config.get("tts_replace_audio", False))
+    other_layout.addRow("", parent_dialog.tts_replace_audio)
 
     other_group.setLayout(other_layout)
     basic_layout.addWidget(other_group)
@@ -406,6 +436,15 @@ def _get_combo_value(combo_box, custom_widget):
     return value
 
 def save_basic_settings(parent_dialog):
+    # Reverse map TTS engine label to value
+    tts_engine_reverse = {
+        "Edge TTS (免费高质量)": "edge_tts",
+        "Anki 原生 TTS": "anki_native",
+        "自定义 URL": "custom_url",
+    }
+    tts_engine_label = parent_dialog.tts_engine_combo.currentText()
+    tts_engine_value = tts_engine_reverse.get(tts_engine_label, "edge_tts")
+
     new_config = {
         "api_url": parent_dialog.api_url.text(),
         "api_key": parent_dialog.api_key.text(),
@@ -419,6 +458,9 @@ def save_basic_settings(parent_dialog):
         "learning_language": parent_dialog.learning_language_combo.currentText(),
         "prompt_name": parent_dialog.prompt_name_combo.currentText(),
         "font_family": parent_dialog.font_combo.currentText(),
+        "tts_engine": tts_engine_value,
+        "tts_custom_url": parent_dialog.tts_custom_url.text(),
+        "tts_replace_audio": parent_dialog.tts_replace_audio.isChecked(),
     }
 
     current_full_config = get_config()
