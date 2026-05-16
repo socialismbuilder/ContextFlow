@@ -126,8 +126,25 @@
 
         <div class="tts-btn-group">
             {WORD_BUTTON}
-            <div class="tts-btn" id="tts-sentence" onclick="this.classList.add('loading');pycmd('contextflow:tts:sentence:{SENTENCE_TEXT}')"><span class="tts-label">朗读例句</span></div>
+            <div class="tts-btn" id="tts-sentence" onclick="this.classList.add('loading');pycmd('contextflow:tts:sentence:{SENTENCE_TEXT}')"><span class="tts-label">朗读例句 (W)</span></div>
         </div>
+    </div>
+
+    {ORIGINAL_CARD_AREA}
+</div>
+
+<script>
+document.addEventListener('keydown', function(e) {
+    if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+    if (e.key === 'q' || e.key === 'Q') {
+        var btn = document.getElementById('tts-word');
+        if (btn && !btn.classList.contains('loading')) { btn.click(); e.preventDefault(); }
+    } else if (e.key === 'w' || e.key === 'W') {
+        var btn = document.getElementById('tts-sentence');
+        if (btn && !btn.classList.contains('loading')) { btn.click(); e.preventDefault(); }
+    }
+});
+</script>
     </div>
 
     {ORIGINAL_CARD_AREA}

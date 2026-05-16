@@ -9,10 +9,10 @@ from aqt.qt import (
     QGroupBox, QHBoxLayout, QWidget, QDialogButtonBox, QMessageBox, QApplication,
     QTabWidget, QTextEdit, QSplitter, Qt, QGridLayout, QCompleter, QScrollArea
 )
-from .config_manager import get_config, save_config
-from .cache_manager import clear_cache
-from . import api_client
-from .card_template_manager import update_card_templates
+from ..config_manager import get_config, save_config
+from ..cache.cache_manager import clear_cache
+from .. import api_client
+from ..card.card_template_manager import update_card_templates
 from PyQt6.QtCore import QTimer
 
 # Custom ComboBox to ignore wheel events
@@ -214,10 +214,10 @@ def add_othersetting(parent_dialog, basic_layout, current_config):
     # TTS 设置
     parent_dialog.tts_engine_combo = NoWheelComboBox()
     tts_engines = ["edge_tts", "anki_native", "custom_url"]
-    tts_engine_labels = {"edge_tts": "Edge TTS (免费高质量)", "anki_native": "Anki 原生 TTS", "custom_url": "自定义 URL"}
+    tts_engine_labels = {"edge_tts": "Edge TTS (高质量高延时)", "anki_native": "原生 TTS(低质量低延时)", "custom_url": "自定义 URL"}
     parent_dialog.tts_engine_combo.addItems(tts_engine_labels.values())
     saved_tts = current_config.get("tts_engine", "edge_tts")
-    saved_tts_label = tts_engine_labels.get(saved_tts, "Edge TTS (免费高质量)")
+    saved_tts_label = tts_engine_labels.get(saved_tts, "Edge TTS (高质量高延时)")
     parent_dialog.tts_engine_combo.setCurrentText(saved_tts_label)
 
     parent_dialog.tts_custom_url = QLineEdit(current_config.get("tts_custom_url", ""))
@@ -438,8 +438,8 @@ def _get_combo_value(combo_box, custom_widget):
 def save_basic_settings(parent_dialog):
     # Reverse map TTS engine label to value
     tts_engine_reverse = {
-        "Edge TTS (免费高质量)": "edge_tts",
-        "Anki 原生 TTS": "anki_native",
+        "Edge TTS (高质量高延时)": "edge_tts",
+        "原生 TTS(低质量低延时)": "anki_native",
         "自定义 URL": "custom_url",
     }
     tts_engine_label = parent_dialog.tts_engine_combo.currentText()

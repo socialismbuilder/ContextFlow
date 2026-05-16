@@ -2,10 +2,10 @@
 
 import os
 import re
-from .config_manager import get_config
-from .tts.tts_manager import _get_anki_lang
+from ..config_manager import get_config
+from ..tts.tts_manager import _get_anki_lang
 
-TEMPLATES_DIR = os.path.join(os.path.dirname(__file__), "templates")
+TEMPLATES_DIR = os.path.join(os.path.dirname(__file__), "..", "templates")
 
 
 def _load_template(filename: str) -> str:
@@ -68,7 +68,7 @@ def _fill_template(template: str, sentence: str, translation: str,
             f'<div class="tts-btn" id="tts-word" '
             f'onclick="this.classList.add(\'loading\');'
             f'pycmd(\'contextflow:tts:word:{word_text}\')">'
-            f'<span class="tts-label">朗读单词</span></div>'
+            f'<span class="tts-label">朗读单词 (Q)</span></div>'
         )
     else:
         word_button = ""

@@ -6,9 +6,11 @@ import aqt
 from aqt import mw
 from aqt.qt import QAction, QMenu
 from anki.hooks import addHook
-from .config_manager import get_config
-from .anki_card_creator import create_sentence_card
-from . import config_manager
+from ..config_manager import get_config
+from ..card.anki_card_creator import create_sentence_card
+from .. import config_manager
+from .ai_explanation_dialog import AIExplanationDialog
+
 # 全局变量存储选中的词汇
 selected_word = ""
 
@@ -127,8 +129,6 @@ def store_example_sentences(sentence, translation):
     存储例句
     """
     create_sentence_card(sentence, translation, get_config().get("save_deck", "收藏例句"))
-
-from .ai_explanation_dialog import AIExplanationDialog # 导入AIExplanationDialog
 
 def explain_word_with_ai(sentence, word):
     """

@@ -2,7 +2,7 @@ import aqt
 from aqt.qt import (
     QDialog, QVBoxLayout, QTabWidget, QWidget, QScrollArea, QMessageBox
 )
-from .config_manager import get_config, save_config
+from ..config_manager import get_config, save_config
 from .basic_settings_ui import add_api_setting, add_Preferences_setting, add_othersetting, save_basic_settings, NoWheelComboBox
 from .prompt_editor_ui import setup_prompt_template_tab, load_selected_prompt, delete_selected_prompt, save_custom_prompt, test_prompt_template
 

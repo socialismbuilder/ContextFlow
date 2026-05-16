@@ -53,10 +53,22 @@ def _clean_text_for_tts(text: str) -> str:
     return text
 
 
+def _play_bytes(audio_data: bytes, ext: str = ".mp3") -> str:
+    """Write audio bytes to a temp file and play it. Must be called on main thread."""
+    fd, path = tempfile.mkstemp(suffix=ext)
+    try:
+        os.write(fd, audio_data)
+    finally:
+        os.close(fd)
+
+    from aqt.sound import av_player
+    av_player.play_file(path)
+    return path
+
+
 class TTSManager:
     def __init__(self):
-        self._tmpdir = tempfile.mkdtemp(prefix="contextflow_tts_")
-        self._cache = {}  # cache_key -> audio file path
+        self._cache = {}  # cache_key -> (bytes, ext)
 
     def play_cached(self, text: str) -> str | None:
         """Check cache and play if hit. Returns file path on hit, None on miss."""
@@ -68,13 +80,8 @@ class TTSManager:
 
         cache_key = f"{engine}:{text}"
         if cache_key in self._cache:
-            cached = self._cache[cache_key]
-            if os.path.exists(cached):
-                from aqt.sound import av_player
-                av_player.play_file(cached)
-                return cached
-            else:
-                del self._cache[cache_key]
+            audio_data, ext = self._cache[cache_key]
+            return _play_bytes(audio_data, ext)
         return None
 
     def is_anki_native(self) -> bool:
@@ -84,8 +91,8 @@ class TTSManager:
         """Play via Anki native TTS (must be called from main thread)."""
         self._play_anki_native(_clean_text_for_tts(text))
 
-    def generate(self, text: str) -> str | None:
-        """Generate audio file (call from background thread). Returns file path or None."""
+    def generate(self, text: str) -> tuple[bytes, str] | None:
+        """Generate audio in background thread. Returns (audio_bytes, ext) or None."""
         config = get_config()
         engine = config.get("tts_engine", "edge_tts")
         text = _clean_text_for_tts(text)
@@ -103,21 +110,25 @@ class TTSManager:
         return None
 
     def _generate_edge_tts(self, text: str, cache_key: str):
-        """Generate audio file with edge-tts, return file path or None."""
+        """Generate audio with edge-tts. Returns (bytes, ext) or None."""
         import edge_tts
 
         config = get_config()
         language = config.get("learning_language", "英语")
         voice = _get_voice_for_language(language)
 
-        tmpfile = os.path.join(self._tmpdir, f"tts_{hash(text) & 0xFFFFFFFF}.mp3")
         communicate = edge_tts.Communicate(text, voice)
-        communicate.save_sync(tmpfile)
+        chunks = bytearray()
+        for chunk in communicate.stream_sync():
+            if chunk["type"] == "audio":
+                chunks.extend(chunk["data"])
 
-        if os.path.exists(tmpfile):
-            self._cache[cache_key] = tmpfile
-            return tmpfile
-        return None
+        if not chunks:
+            return None
+
+        audio_data = bytes(chunks)
+        self._cache[cache_key] = (audio_data, ".mp3")
+        return (audio_data, ".mp3")
 
     def _play_anki_native(self, text: str):
         from anki.sound import TTSTag
@@ -144,7 +155,7 @@ class TTSManager:
         print("WARNING: No Anki TTS player available for this language")
 
     def _generate_custom(self, text: str, cache_key: str):
-        """Generate audio file from custom URL, return file path or None."""
+        """Generate audio from custom URL. Returns (bytes, ext) or None."""
         import requests
 
         config = get_config()
@@ -165,13 +176,10 @@ class TTSManager:
 
         content_type = resp.headers.get("content-type", "")
         ext = ".mp3" if "mpeg" in content_type else ".wav"
-        tmpfile = os.path.join(self._tmpdir, f"tts_custom_{hash(text) & 0xFFFFFFFF}{ext}")
+        audio_data = resp.content
 
-        with open(tmpfile, "wb") as f:
-            f.write(resp.content)
-
-        self._cache[cache_key] = tmpfile
-        return tmpfile
+        self._cache[cache_key] = (audio_data, ext)
+        return (audio_data, ext)
 
 
 # Singleton instance

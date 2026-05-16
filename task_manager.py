@@ -8,7 +8,7 @@ import concurrent.futures
 from anki.cards import Card
 
 from .config_manager import get_config, clean_html
-from .cache_manager import load_cache, save_cache, pop_cache
+from .cache.cache_manager import load_cache, save_cache, pop_cache
 from .api_client import generate_ai_sentence
 
 
@@ -55,7 +55,7 @@ class SentenceTaskManager:
         """停止管理器线程和线程池"""
         # 取消注册右键菜单
         try:
-            from . import context_menu
+            from .ui import context_menu
             context_menu.unregister_context_menu()
             print("DEBUG: 选中词汇例句生成功能已停用")
         except Exception as e:

@@ -9,9 +9,9 @@ from aqt.qt import (
     QGroupBox, QHBoxLayout, QWidget, QDialogButtonBox, QMessageBox, QApplication,
     QTabWidget, QTextEdit, QSplitter, Qt, QGridLayout, QCompleter, QScrollArea
 )
-from .config_manager import get_config, save_config
-from . import api_client
-from . import main_logic # 导入 main_logic 以便调用线程池
+from ..config_manager import get_config, save_config
+from .. import api_client
+from .. import main_logic # 导入 main_logic 以便调用线程池
 
 # Custom ComboBox to ignore wheel events
 class NoWheelComboBox(QComboBox):

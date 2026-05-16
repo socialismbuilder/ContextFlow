@@ -3,14 +3,15 @@ from aqt import mw
 from aqt import gui_hooks
 import time
 import re
+import threading
 from anki.cards import Card
 from PyQt6.QtCore import QTimer
 from . import config_manager
 from .config_manager import get_config, clean_html
-from .cache_manager import load_cache, pop_cache
-from .card_template_manager import get_processed_back_html, get_processed_front_html
+from .cache.cache_manager import load_cache, pop_cache
+from .card.card_template_manager import get_processed_back_html, get_processed_front_html
 from .tts.tts_manager import tts_manager
-from .stats import add_stats
+from .ui.stats import add_stats
 from .task_manager import SentenceTaskManager
 
 # --- 单例实例 ---
@@ -272,22 +273,26 @@ def _handle_js_message(handled, message, context):
                 tts_manager.play_anki_native(text)
                 _stop_tts_loading()
             else:
-                from aqt import mw
+                def _tts_background():
+                    try:
+                        result = tts_manager.generate(text)
+                    except Exception as e:
+                        print(f"ERROR: TTS generation failed: {e}")
+                        result = None
 
-                def on_done(future):
-                    result = future.result()
-                    _stop_tts_loading()
-                    if result:
-                        try:
-                            from aqt.sound import av_player
-                            av_player.play_file(result)
-                        except Exception as e:
-                            print(f"ERROR: TTS play file failed: {e}")
+                    def _on_tts_done():
+                        _stop_tts_loading()
+                        if result:
+                            audio_data, ext = result
+                            try:
+                                from .tts.tts_manager import _play_bytes
+                                _play_bytes(audio_data, ext)
+                            except Exception as e:
+                                print(f"ERROR: TTS play file failed: {e}")
 
-                mw.taskman.run_in_background(
-                    lambda: tts_manager.generate(text),
-                    on_done,
-                )
+                    mw.taskman.run_on_main(_on_tts_done)
+
+                threading.Thread(target=_tts_background, daemon=True).start()
         return (True, None)
 
     return handled
@@ -324,7 +329,7 @@ def register_hooks():
     gui_hooks.stats_dialog_will_show.append(add_stats)
 
     try:
-        from . import context_menu
+        from .ui import context_menu
         context_menu.register_context_menu()
         print("DEBUG: 选中词汇例句生成功能已启用")
     except Exception as e:

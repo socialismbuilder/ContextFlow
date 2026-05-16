@@ -11,8 +11,8 @@ import markdown
 import re
 from functools import partial
 
-from .config_manager import get_config
-from .anki_card_creator import create_sentence_card
+from ..config_manager import get_config
+from ..card.anki_card_creator import create_sentence_card
 
 # --- 样式 ---
 DARK_THEME_STYLESHEET = """
@@ -429,7 +429,7 @@ class AIExplanationDialog(QDialog):
         else:
             headers = {"Authorization": f"Bearer {self.api_key}", "Content-Type": "application/json"}
             
-        from . import api_client
+        from .. import api_client
         if api_client.support_thinking:
             payload = {"model": self.model_name, "messages": self.conversation_history, "stream": True,"thinking": {"type": "disabled"}}
         else:

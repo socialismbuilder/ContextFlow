@@ -10,10 +10,10 @@ if _lib_path not in sys.path:
 
 # Import necessary functions/classes from the refactored modules
 # Use relative imports for modules within the same addon package
-from . import ui_manager
+from .ui import ui_manager
 from . import main_logic
 from . import api_client
-from .card_template_manager import update_card_templates
+from .card.card_template_manager import update_card_templates
 from aqt import gui_hooks
 
 # Initialize the addon:

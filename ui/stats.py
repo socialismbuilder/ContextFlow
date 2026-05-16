@@ -185,12 +185,12 @@ def refresh_stats_content(container, deck_name):
     
     # 从模板文件读取HTML内容（使用插件根目录路径）
     import os
-    template_path = os.path.join(os.path.dirname(__file__), 'templates', 'stats.html')
+    template_path = os.path.join(os.path.dirname(__file__), '..', 'templates', 'stats.html')
     with open(template_path, 'r', encoding='utf-8') as f:
         html_content = f.read()
     
     # 读取chart.js文件内容
-    chart_js_path = os.path.join(os.path.dirname(__file__), 'chart.js')
+    chart_js_path = os.path.join(os.path.dirname(__file__), '..', 'templates', 'chart.js')
     with open(chart_js_path, 'r', encoding='utf-8') as f:
         chart_js_content = f.read()
     
