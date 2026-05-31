@@ -1,6 +1,6 @@
 import aqt
-from aqt.qt import (QDialog, QVBoxLayout, QHBoxLayout, QTextEdit, QLineEdit, 
-                    QPushButton, QWidget, QScrollArea, Qt, QTextCursor, 
+from aqt.qt import (QDialog, QVBoxLayout, QHBoxLayout, QTextEdit,
+                    QPushButton, QWidget, QScrollArea, Qt, QTextCursor,
                     QTimer, QSizePolicy, pyqtSignal)
 from aqt.utils import showInfo, tooltip
 import requests
@@ -19,7 +19,7 @@ DARK_THEME_STYLESHEET = """
     AIExplanationDialog { background-color: #2e2e2e; }
     QScrollArea { border: none; background-color: transparent; }
     #conversationWidget { background-color: transparent; }
-    QLineEdit {
+    #userInputField {
         background-color: #3c3c3c; color: #f0f0f0; border: 1px solid #555;
         border-radius: 15px; padding: 8px 12px; font-size: 14px;
     }
@@ -64,6 +64,7 @@ prompt = """你是ContextFlow软件的语言学习助手，你将扮演一位资
 - **永远需要。** 针对选中的 `{word_to_explain}` 给出最核心的定义。
 - 如果是**单词**，提供词性、拼音和基本含义。
 - 如果是**短语或句子**，解释其整体意思。
+- 这部分讲解请无视例句中的语境，直接针对词汇/短语本身进行解释，以确保用户能建立正确的基本概念。
 
 #### 🌐 语境解析
 - **大多数情况需要。** 解释 `{word_to_explain}` 在原句 `{sentence}` 中的具体作用和含义。
@@ -97,8 +98,9 @@ prompt = """你是ContextFlow软件的语言学习助手，你将扮演一位资
 
 你的回答应该像一位经验丰富的老师，既有深度，又懂得因材施教，直击要点。现在，请根据这个新的指导原则，为用户服务。
 
-完成以上步骤后，等待用户的追问。对于追问，随后的追问，不必遵循上述流程，完全灵活的处理。例句生成工具依然可以调用，但建议只在用户主动提出时调用
+完成以上步骤后，等待用户的追问。对于追问，随后的追问，不必遵循上述流程，完全灵活的处理。
 
+例句生成工具在用户追问时依然可以调用，但仅在用户明确要求更多例句，或者你认为提供额外例句能显著帮助用户理解时使用，避免显得刻板和冗余。
 """
 
 
@@ -326,9 +328,17 @@ class AIExplanationDialog(QDialog):
 
         input_layout = QHBoxLayout()
         input_layout.setSpacing(10)
-        self.user_input = QLineEdit()
-        self.user_input.setPlaceholderText("继续提问...")
-        self.user_input.returnPressed.connect(self.send_message)
+        self.user_input = QTextEdit()
+        self.user_input.setObjectName("userInputField")
+        self.user_input.setPlaceholderText("继续提问... (Shift+Enter换行, Enter发送)")
+        self.user_input.setFixedHeight(50)
+        self.user_input.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.user_input.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.user_input.setAcceptRichText(False)
+        # 内容变化时动态调整高度
+        self.user_input.textChanged.connect(self._adjust_input_height)
+        # 使用事件过滤器实现 Enter 发送, Shift+Enter 换行
+        self.user_input.installEventFilter(self)
         input_layout.addWidget(self.user_input)
 
         self.send_button = QPushButton("发送")
@@ -383,12 +393,13 @@ class AIExplanationDialog(QDialog):
         self.send_message_to_ai()
 
     def send_message(self):
-        user_message = self.user_input.text().strip()
+        user_message = self.user_input.toPlainText().strip()
         if not user_message or self.is_streaming:
             if self.is_streaming: tooltip("AI正在生成中，请稍候...", period=1000)
             return
             
         self.user_input.clear()
+        self.user_input.setFixedHeight(50)
         user_bubble = self._add_message_bubble(user_message, 'user')
         # 确保用户气泡高度在内容设置后正确调整
         QTimer.singleShot(0, user_bubble._adjust_main_text_height)
@@ -490,7 +501,9 @@ class AIExplanationDialog(QDialog):
                     table {{ width: 100%; border-collapse: collapse; }}
                     th, td {{ border: 1px solid #555; padding: 6px; text-align: left; }}
                     th {{ background-color: #4a4a4a; }}
-                    code {{ background-color: #4a4a4a; padding: 2px 4px; border-radius: 4px; }}
+                    code {{ background-color: #e8e8e8; color: #1e1e1e; padding: 2px 4px; border-radius: 4px; font-size: 13px; }}
+                    pre {{ background-color: #f5f5f5; color: #1e1e1e; padding: 10px; border-radius: 6px; overflow-x: auto; }}
+                    pre code {{ background-color: transparent; padding: 0; font-size: 13px; }}
                 </style>
                 {md_html}
             """
@@ -534,7 +547,12 @@ class AIExplanationDialog(QDialog):
             md_html = markdown.markdown(cleaned_text, extensions=self.markdown_extensions)
             styled_html = f"""
                 <style>
-                    /* Style for main bubble text */
+                    table {{ width: 100%; border-collapse: collapse; }}
+                    th, td {{ border: 1px solid #555; padding: 6px; text-align: left; }}
+                    th {{ background-color: #4a4a4a; }}
+                    code {{ background-color: #e8e8e8; color: #1e1e1e; padding: 2px 4px; border-radius: 4px; font-size: 13px; }}
+                    pre {{ background-color: #f5f5f5; color: #1e1e1e; padding: 10px; border-radius: 6px; overflow-x: auto; }}
+                    pre code {{ background-color: transparent; padding: 0; font-size: 13px; }}
                 </style>
                 {md_html}
             """
@@ -552,6 +570,30 @@ class AIExplanationDialog(QDialog):
         if hasattr(self, 'timer'):
             self.killTimer(self.timer)
         super().closeEvent(event)
+
+    def _adjust_input_height(self):
+        """根据内容动态调整输入框高度: 初始50px, 最大150px"""
+        doc_height = self.user_input.document().size().height()
+        new_height = min(max(int(doc_height) + 20, 50), 150)
+        self.user_input.setFixedHeight(new_height)
+        # 超出最大高度时启用滚动条
+        if new_height >= 150:
+            self.user_input.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        else:
+            self.user_input.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+
+    def eventFilter(self, obj, event):
+        """拦截输入框按键事件: Enter发送, Shift+Enter换行"""
+        if obj is self.user_input and event.type() == event.Type.KeyPress:
+            if event.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
+                if event.modifiers() & Qt.KeyboardModifier.ShiftModifier:
+                    # Shift+Enter: 插入换行，让 QTextEdit 默认处理
+                    return False
+                else:
+                    # Enter: 发送消息
+                    self.send_message()
+                    return True
+        return super().eventFilter(obj, event)
 
     def _clean_remaining_text(self, text: str) -> str:
         """清理剩余文本中的多余回车换行"""
