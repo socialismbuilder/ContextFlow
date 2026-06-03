@@ -25,6 +25,7 @@ class SentenceTaskManager:
         self._manager_thread: threading.Thread = None
         self.showing_sentence: str = ""
         self.showing_translation: str = ""
+        self.on_keyword_ready = None
 
     # --- Lifecycle ---
 
@@ -270,12 +271,21 @@ class SentenceTaskManager:
                 keyword_with_priority = (priority, keyword)
                 future = self.executor.submit(self._process_keyword_task, keyword_with_priority)
 
-                def task_completed_callback(f):
+                def task_completed_callback(f, completed_keyword=keyword):
                     self.task_queue.task_done()
                     with self.cache_lock:
                         remaining_tasks = self.task_queue.qsize() + len(self.processing_keywords)
                     message = f"后台缓存+1，生成队列剩余: {remaining_tasks} 个。"
-                    aqt.mw.taskman.run_on_main(lambda: aqt.utils.tooltip(message, period=2000, parent=mw))
+
+                    def _notify_main():
+                        aqt.utils.tooltip(message, period=2000, parent=mw)
+                        if self.on_keyword_ready is not None:
+                            try:
+                                self.on_keyword_ready(completed_keyword)
+                            except Exception as e:
+                                print(f"ERROR: on_keyword_ready callback failed for '{completed_keyword}': {e}")
+
+                    aqt.mw.taskman.run_on_main(_notify_main)
 
                 future.add_done_callback(task_completed_callback)
 

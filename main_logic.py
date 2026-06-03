@@ -1,7 +1,6 @@
 import aqt
 from aqt import mw
 from aqt import gui_hooks
-import time
 import re
 import threading
 from anki.cards import Card
@@ -27,6 +26,7 @@ stop_event = _task_manager.stop_event
 showing_sentence = ""
 showing_translation = ""
 showing_keyword = ""
+WAITING_SENTENCE_TEXT = "例句生成中..."
 
 
 def _update_showing_state(sentence, translation, keyword=""):
@@ -78,57 +78,32 @@ def _handle_cache_hit(keyword, popped_pair):
 
 
 def _handle_cache_miss(keyword):
-    """处理缓存未命中：加入队列，启动进度条轮询等待。返回 HTML"""
+    """处理缓存未命中：加入队列并返回占位内容。"""
     print(f"DEBUG: 缓存未命中 '{keyword}'。加入队列并开始等待。")
     _task_manager.reorganize_queue(keyword)
-
-    max_wait = 30
-    start_time = time.time()
-    timer = QTimer()
-    timer.setParent(mw)
-
-    # 进度条上只显示单词，去掉括号中的翻译避免剧透
     display_keyword = re.sub(r'[（(].*?[）)]', '', keyword).strip()
+    aqt.utils.tooltip(f"正在为 '{display_keyword}' 生成例句...", period=1500, parent=mw)
 
-    mw.progress.start(
-        immediate=True,
-        label=f"正在为 '{display_keyword}' 生成例句...",
-        min=0,
-        max=max_wait
-    )
+    _update_showing_state(WAITING_SENTENCE_TEXT, "", keyword)
+    return get_processed_front_html(WAITING_SENTENCE_TEXT)
 
-    def _finish_progress():
-        """统一清理进度条和 timer"""
-        timer.stop()
-        mw.progress.finish()
 
-    def update_ui():
-        # 用户点击了进度条的关闭按钮
-        if mw.progress.want_cancel():
-            _finish_progress()
+def _refresh_waiting_card_if_ready(keyword: str):
+    """When the current question card is still waiting for this keyword, rerender it."""
+    try:
+        reviewer = aqt.mw.reviewer
+        if reviewer is None or reviewer.state != 'question':
             return
 
-        elapsed = int(time.time() - start_time)
-
-        mw.progress.update(
-            label=f"正在为 '{display_keyword}' 生成例句... (已等待{elapsed}秒/{max_wait}秒)",
-            value=elapsed,
-            max=max_wait
-        )
-
-        if elapsed >= max_wait:
-            _finish_progress()
+        if keyword != showing_keyword or showing_sentence != WAITING_SENTENCE_TEXT:
             return
 
-        if load_cache(keyword):
-            _finish_progress()
-            mw.reset()
+        if not load_cache(keyword):
+            return
 
-    timer.timeout.connect(update_ui)
-    timer.start(100)
-
-    _update_showing_state("例句生成中...", "", keyword)
-    return get_processed_front_html("例句生成中...")
+        QTimer.singleShot(0, mw.reset)
+    except Exception as e:
+        print(f"ERROR: Failed to refresh waiting card for '{keyword}': {e}")
 
 
 def _render_question_side(card, base_deck_name, field_index_match):
@@ -269,8 +244,11 @@ def _handle_js_message(handled, message, context):
             cached = tts_manager.play_cached(text)
             if cached:
                 _stop_tts_loading()
-            elif tts_manager.is_anki_native():
-                tts_manager.play_anki_native(text)
+            elif tts_manager.uses_direct_playback():
+                try:
+                    tts_manager.play_direct(text)
+                except Exception as e:
+                    print(f"ERROR: TTS direct playback failed: {e}")
                 _stop_tts_loading()
             else:
                 def _tts_background():
@@ -320,6 +298,7 @@ def _block_native_audio(card, tags):
 
 def register_hooks():
     """注册所有需要的钩子，并延迟启动工作线程"""
+    _task_manager.on_keyword_ready = _refresh_waiting_card_if_ready
     gui_hooks.card_will_show.append(on_card_render)
     gui_hooks.webview_did_receive_js_message.append(_handle_js_message)
     gui_hooks.reviewer_will_play_question_sounds.append(_block_native_audio)
