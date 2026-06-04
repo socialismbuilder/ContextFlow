@@ -2,6 +2,7 @@ import time
 import traceback
 import os
 import json
+import threading
 
 import aqt
 from aqt.qt import (
@@ -234,8 +235,24 @@ def add_othersetting(parent_dialog, basic_layout, current_config):
     tts_engine_layout.addWidget(parent_dialog.tts_custom_url)
     parent_dialog.tts_custom_url.setVisible(saved_tts == "custom_url")
 
-    parent_dialog.tts_engine_combo.currentTextChanged.connect(
-        lambda text: parent_dialog.tts_custom_url.setVisible("自定义" in text)
+    # Edge TTS voice picker
+    parent_dialog.edge_voice_combo = NoWheelComboBox()
+    saved_language = current_config.get("learning_language", "英语")
+    override_key = f"edge_tts_voice_{saved_language}"
+    saved_voice = current_config.get(override_key, "")
+    _populate_voice_combo(parent_dialog, saved_language, saved_voice)
+    parent_dialog.edge_voice_combo.setVisible(saved_tts == "edge_tts")
+    tts_engine_layout.addWidget(parent_dialog.edge_voice_combo)
+
+    def _on_tts_engine_changed(text):
+        parent_dialog.tts_custom_url.setVisible("自定义" in text)
+        parent_dialog.edge_voice_combo.setVisible("Edge" in text)
+
+    parent_dialog.tts_engine_combo.currentTextChanged.connect(_on_tts_engine_changed)
+
+    # Refresh voice list when learning language changes
+    parent_dialog.learning_language_combo.currentTextChanged.connect(
+        lambda lang: _on_learning_language_changed(parent_dialog, lang)
     )
 
     other_layout.addRow("TTS 引擎:", tts_engine_widget)
@@ -248,6 +265,26 @@ def add_othersetting(parent_dialog, basic_layout, current_config):
     other_group.setLayout(other_layout)
     basic_layout.addWidget(other_group)
     basic_layout.addStretch()
+
+    # Kick off Edge TTS voice list fetch in background; refresh combo when done
+    from ..tts.tts_manager import ensure_voice_list_loaded
+    ensure_voice_list_loaded()
+
+    def _refresh_voice_combo_after_load():
+        """Wait for voice list to load, then refresh the combo on the main thread."""
+        from ..tts.tts_manager import _voice_list_lock, _cached_voice_list
+        for _ in range(50):  # poll every 100ms, up to 5 seconds
+            with _voice_list_lock:
+                if _cached_voice_list:
+                    break
+            time.sleep(0.1)
+        QTimer.singleShot(0, lambda: _populate_voice_combo(
+            parent_dialog,
+            parent_dialog.learning_language_combo.currentText(),
+            parent_dialog.edge_voice_combo.currentData() or "",
+        ))
+
+    threading.Thread(target=_refresh_voice_combo_after_load, daemon=True).start()
 
     del_cache_btn = QPushButton("删除缓存")
     del_cache_btn.clicked.connect(lambda: clear_cache_and_notify(parent_dialog))
@@ -439,6 +476,53 @@ def _get_combo_value(combo_box, custom_widget):
             return custom_widget.text() if custom_widget.text() else ""
     return value
 
+
+def _populate_voice_combo(parent_dialog, language, saved_voice_shortname):
+    """Populate the Edge TTS voice combo for the given language.
+    Uses cached API voice list if available, otherwise falls back to TTS_VOICE_MAP defaults."""
+    from ..tts.tts_manager import get_voices_for_language, TTS_VOICE_MAP
+
+    voices = get_voices_for_language(language)
+    parent_dialog.edge_voice_combo.clear()
+
+    # First item: "(默认)" meaning use the TTS_VOICE_MAP default
+    default_voice = TTS_VOICE_MAP.get(language, "en-US-EmmaMultilingualNeural")
+    parent_dialog.edge_voice_combo.addItem(f"(默认) {default_voice}", "")
+
+    # Add each voice; skip the default since it's already the first item
+    for v in voices:
+        shortname = v.get("ShortName", "")
+        friendly = v.get("FriendlyName", shortname)
+        display = f"{friendly} ({shortname})" if friendly != shortname else shortname
+        if shortname == default_voice:
+            continue
+        parent_dialog.edge_voice_combo.addItem(display, shortname)
+
+    # Restore saved selection
+    if saved_voice_shortname:
+        idx = parent_dialog.edge_voice_combo.findData(saved_voice_shortname)
+        if idx >= 0:
+            parent_dialog.edge_voice_combo.setCurrentIndex(idx)
+        else:
+            # Saved voice no longer in list -- add it as a preserved entry
+            parent_dialog.edge_voice_combo.addItem(f"{saved_voice_shortname} (已保存)", saved_voice_shortname)
+            parent_dialog.edge_voice_combo.setCurrentIndex(parent_dialog.edge_voice_combo.count() - 1)
+    else:
+        parent_dialog.edge_voice_combo.setCurrentIndex(0)
+
+
+def _on_learning_language_changed(parent_dialog, language):
+    """Refresh the voice picker when the learning language changes."""
+    if not parent_dialog.edge_voice_combo.isVisible():
+        return
+    saved_voice = ""
+    try:
+        override_key = f"edge_tts_voice_{language}"
+        saved_voice = get_config().get(override_key, "")
+    except Exception:
+        pass
+    _populate_voice_combo(parent_dialog, language, saved_voice)
+
 def save_basic_settings(parent_dialog):
     # Reverse map TTS engine label to value
     tts_engine_reverse = {
@@ -472,6 +556,14 @@ def save_basic_settings(parent_dialog):
     for key in ["custom_prompts", "preset_api_urls", "preset_vocab_levels", "preset_learning_goals", "preset_difficulties", "preset_lengths"]:
         if key in current_full_config:
             new_config[key] = current_full_config[key]
+
+    # Preserve all existing edge_tts_voice_* overrides, update current language's
+    for key in current_full_config:
+        if key.startswith("edge_tts_voice_"):
+            new_config[key] = current_full_config[key]
+    current_lang = parent_dialog.learning_language_combo.currentText()
+    voice_shortname = parent_dialog.edge_voice_combo.currentData() or ""
+    new_config[f"edge_tts_voice_{current_lang}"] = voice_shortname
 
     save_config(new_config)
     

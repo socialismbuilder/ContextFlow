@@ -7,6 +7,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import threading
 
 from ..config_manager import get_config
 
@@ -83,7 +84,96 @@ APPLE_SYSTEM_LANG_MAP = {
     "印地语": ("hi",),
 }
 
+# Language name -> Edge TTS locale prefix for voice filtering
+LANG_TO_LOCALE_PREFIX = {
+    "英语": ("en",),
+    "日语": ("ja",),
+    "韩语": ("ko",),
+    "法语": ("fr",),
+    "德语": ("de",),
+    "西班牙语": ("es",),
+    "意大利语": ("it",),
+    "葡萄牙语": ("pt",),
+    "俄语": ("ru",),
+    "阿拉伯语": ("ar",),
+    "中文": ("zh",),
+    "泰语": ("th",),
+    "越南语": ("vi",),
+    "荷兰语": ("nl",),
+    "波兰语": ("pl",),
+    "土耳其语": ("tr",),
+    "印地语": ("hi",),
+}
+
+# Module-level cache for the Edge TTS voice list (fetched once per session)
+_cached_voice_list: list[dict] = []
+_voice_list_lock = threading.Lock()
+_voice_list_fetched = False
+
+
+def _fetch_voice_list() -> list[dict]:
+    """Fetch the full Edge TTS voice list from Microsoft's API synchronously.
+    Must be called from a background thread (creates its own event loop)."""
+    import asyncio
+    import edge_tts
+    try:
+        loop = asyncio.new_event_loop()
+        try:
+            voices = loop.run_until_complete(edge_tts.list_voices())
+            return voices
+        finally:
+            loop.close()
+    except Exception as e:
+        print(f"WARNING: Failed to fetch Edge TTS voice list: {e}")
+        return []
+
+
+def get_voices_for_language(language: str) -> list[dict]:
+    """Return Edge TTS voices matching the given language name (e.g. '英语').
+    Filters by locale prefix, excludes Deprecated voices.
+    Falls back to a single-item list from TTS_VOICE_MAP if no cache available."""
+    with _voice_list_lock:
+        voices = list(_cached_voice_list)
+
+    prefixes = LANG_TO_LOCALE_PREFIX.get(language, ())
+    if not prefixes or not voices:
+        default_short = TTS_VOICE_MAP.get(language)
+        if default_short:
+            return [{"ShortName": default_short, "FriendlyName": default_short, "Locale": "", "Status": "GA"}]
+        return []
+
+    filtered = [
+        v for v in voices
+        if any(v["Locale"].startswith(p) for p in prefixes)
+        and v.get("Status") != "Deprecated"
+    ]
+    filtered.sort(key=lambda v: (0 if v.get("Status") == "GA" else 1, v["ShortName"]))
+    return filtered
+
+
+def ensure_voice_list_loaded():
+    """If the voice list hasn't been fetched yet, kick off a background thread.
+    Safe to call multiple times."""
+    global _voice_list_fetched
+    with _voice_list_lock:
+        if _voice_list_fetched:
+            return
+        _voice_list_fetched = True
+
+    def _load():
+        result = _fetch_voice_list()
+        with _voice_list_lock:
+            _cached_voice_list.clear()
+            _cached_voice_list.extend(result)
+
+    threading.Thread(target=_load, daemon=True).start()
+
+
 def _get_voice_for_language(language: str) -> str:
+    config = get_config()
+    override = config.get(f"edge_tts_voice_{language}", "")
+    if override:
+        return override
     return TTS_VOICE_MAP.get(language, "en-US-EmmaMultilingualNeural")
 
 
