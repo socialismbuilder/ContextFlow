@@ -213,8 +213,12 @@ def add_othersetting(parent_dialog, basic_layout, current_config):
 
     # TTS 设置
     parent_dialog.tts_engine_combo = NoWheelComboBox()
-    tts_engines = ["edge_tts", "anki_native", "custom_url"]
-    tts_engine_labels = {"edge_tts": "Edge TTS (高质量高延时)", "anki_native": "原生 TTS(低质量低延时)", "custom_url": "自定义 URL"}
+    tts_engine_labels = {
+        "edge_tts": "Edge TTS (高质量高延时)",
+        "apple_tts": "Apple TTS (按语言跟随 macOS voice，无缓存)",
+        "anki_native": "Anki 原生 TTS (低质量低延时)",
+        "custom_url": "自定义 URL",
+    }
     parent_dialog.tts_engine_combo.addItems(tts_engine_labels.values())
     saved_tts = current_config.get("tts_engine", "edge_tts")
     saved_tts_label = tts_engine_labels.get(saved_tts, "Edge TTS (高质量高延时)")
@@ -439,7 +443,8 @@ def save_basic_settings(parent_dialog):
     # Reverse map TTS engine label to value
     tts_engine_reverse = {
         "Edge TTS (高质量高延时)": "edge_tts",
-        "原生 TTS(低质量低延时)": "anki_native",
+        "Apple TTS (按语言跟随 macOS voice，无缓存)": "apple_tts",
+        "Anki 原生 TTS (低质量低延时)": "anki_native",
         "自定义 URL": "custom_url",
     }
     tts_engine_label = parent_dialog.tts_engine_combo.currentText()
