@@ -106,5 +106,6 @@
     ],
     "tts_engine": "edge_tts",
     "tts_custom_url": "",
-    "tts_replace_audio": false
+    "tts_replace_audio": false,
+    "web_port": 8765
 }

@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>ContextFlow 复习</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <!-- 顶部状态栏 -->
+    <div id="status-bar">
+        <div class="status-left">
+            <button class="btn-icon" onclick="showDeckSelector()" title="切换牌组">☰</button>
+            <span id="deck-name">加载中...</span>
+        </div>
+        <div id="counts">
+            <span class="count new" id="count-new">0</span>
+            <span class="count learning" id="count-learning">0</span>
+            <span class="count review" id="count-review">0</span>
+        </div>
+    </div>
+
+    <!-- 牌组选择 -->
+    <div id="deck-selector" class="hidden">
+        <h2>选择牌组</h2>
+        <div id="deck-list"></div>
+        <button class="btn-back" onclick="hideDeckSelector()">返回</button>
+    </div>
+
+    <!-- 卡片区域 -->
+    <div id="card-area">
+        <!-- ContextFlow 例句区域：正面显示例句+翻译遮挡，背面显示例句+翻译 -->
+        <div id="contextflow-side">
+            <div id="card-css"></div>
+            <div id="contextflow-content" class="card-content"></div>
+        </div>
+
+        <!-- 原始卡片背面区域 -->
+        <div id="origin-side" class="hidden">
+            <div id="origin-content" class="card-content"></div>
+        </div>
+
+        <!-- 翻转按钮 -->
+        <div id="flip-btn" onclick="showAnswer()">
+            <span>显示答案</span>
+        </div>
+
+        <!-- 答题按钮 -->
+        <div id="answer-buttons" class="hidden">
+            <button class="answer-btn again" onclick="answerCard(1)">
+                <span class="btn-label">重来</span>
+                <span class="btn-time" id="btn-time-1"></span>
+            </button>
+            <button class="answer-btn hard" onclick="answerCard(2)">
+                <span class="btn-label">困难</span>
+                <span class="btn-time" id="btn-time-2"></span>
+            </button>
+            <button class="answer-btn good" onclick="answerCard(3)">
+                <span class="btn-label">良好</span>
+                <span class="btn-time" id="btn-time-3"></span>
+            </button>
+            <button class="answer-btn easy" onclick="answerCard(4)">
+                <span class="btn-label">简单</span>
+                <span class="btn-time" id="btn-time-4"></span>
+            </button>
+        </div>
+    </div>
+
+    <!-- 等待界面 -->
+    <div id="waiting-screen" class="hidden screen">
+        <div class="screen-icon">⏳</div>
+        <h2>学习中卡片等待中</h2>
+        <p class="wait-info">还有 <span id="learning-remaining">0</span> 张学习中卡片</p>
+        <p class="countdown">将在 <span id="wait-seconds" class="countdown-num">0</span> 秒后到达</p>
+    </div>
+
+    <!-- 完成界面 -->
+    <div id="finished-screen" class="hidden screen">
+        <div class="screen-icon">🎉</div>
+        <h2>今日复习完成！</h2>
+        <button class="btn-primary" onclick="fetchNextCard()">继续检查</button>
+        <button class="btn-secondary" onclick="showDeckSelector()">切换牌组</button>
+    </div>
+
+    <!-- 加载/错误 -->
+    <div id="loading-screen" class="hidden screen">
+        <div class="spinner"></div>
+        <p id="loading-text">加载中...</p>
+    </div>
+
+    <div id="error-screen" class="hidden screen">
+        <div class="screen-icon">⚠️</div>
+        <h2 id="error-title">出错了</h2>
+        <p id="error-message"></p>
+        <button class="btn-primary" onclick="fetchNextCard()">重试</button>
+    </div>
+
+    <script src="/static/app.js"></script>
+</body>
+</html>

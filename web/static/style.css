@@ -1,0 +1,382 @@
+/* ── 基础重置与布局 ─────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+    --again: hsl(0, 65%, 58%);
+    --hard: hsl(38, 60%, 55%);
+    --good: hsl(145, 50%, 52%);
+    --easy: hsl(215, 55%, 58%);
+    --bg: #0f1117;
+    --surface: rgba(255, 255, 255, 0.04);
+    --surface-hover: rgba(255, 255, 255, 0.08);
+    --glass: rgba(255, 255, 255, 0.06);
+    --glass-border: rgba(255, 255, 255, 0.08);
+    --text: rgba(255, 255, 255, 0.92);
+    --text-dim: rgba(255, 255, 255, 0.45);
+    --text-mid: rgba(255, 255, 255, 0.65);
+    --radius: 14px;
+    --radius-sm: 10px;
+    --safe-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+html, body {
+    height: 100%;
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", Roboto, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    overflow: hidden;
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
+    -webkit-font-smoothing: antialiased;
+}
+
+body {
+    display: flex;
+    flex-direction: column;
+}
+
+.hidden { display: none !important; }
+
+/* ── 状态栏 ────────────────────────────────────────── */
+#status-bar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px 18px;
+    background: var(--glass);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border-bottom: 1px solid var(--glass-border);
+    flex-shrink: 0;
+}
+
+.status-left {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+    flex: 1;
+}
+
+#deck-name {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-mid);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    letter-spacing: 0.3px;
+}
+
+#counts {
+    display: flex;
+    gap: 6px;
+}
+
+.count {
+    font-size: 11px;
+    font-weight: 700;
+    padding: 3px 10px;
+    border-radius: 20px;
+    min-width: 28px;
+    text-align: center;
+    letter-spacing: 0.5px;
+}
+.count.new { background: rgba(59, 130, 246, 0.25); color: hsl(215, 70%, 72%); }
+.count.learning { background: rgba(245, 158, 11, 0.2); color: hsl(38, 75%, 68%); }
+.count.review { background: rgba(34, 197, 94, 0.2); color: hsl(145, 60%, 68%); }
+
+/* ── 卡片区域 ──────────────────────────────────────── */
+#card-area {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    padding: 10px 14px;
+    gap: 8px;
+}
+
+/* ContextFlow 例句区域：自适应高度，不撑满 */
+#contextflow-side {
+    flex-shrink: 0;
+    overflow: hidden;
+    background: var(--glass);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border: 1px solid var(--glass-border);
+    border-radius: var(--radius);
+}
+
+/* 原始卡片背面区域：撑满剩余空间，可滚动 */
+#origin-side {
+    flex: 1;
+    min-height: 0;
+    overflow: hidden;
+    background: var(--glass);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border: 1px solid var(--glass-border);
+    border-radius: var(--radius);
+}
+
+.card-content {
+    height: 100%;
+    overflow-y: auto;
+    padding: 14px 14px;
+    -webkit-overflow-scrolling: touch;
+    color: var(--text);
+}
+
+/* contextflow-side 的内容不需要撑满高度 */
+#contextflow-side .card-content {
+    height: auto;
+    overflow: visible;
+}
+
+/* 原始 Anki 卡片内容强制白色文字 */
+.card-content, .card-content * {
+    color: var(--text) !important;
+    border-color: rgba(255, 255, 255, 0.12) !important;
+}
+.card-content a { color: rgba(255, 255, 255, 0.7) !important; }
+.card-content img {
+    max-width: 100%;
+    height: auto;
+    border-radius: 8px;
+}
+
+/* ── 翻转按钮 ──────────────────────────────────────── */
+#flip-btn {
+    flex-shrink: 0;
+    padding: 14px;
+    text-align: center;
+    background: var(--glass);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border: 1px solid var(--glass-border);
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: background 0.2s, transform 0.1s;
+    -webkit-user-select: none;
+    user-select: none;
+}
+
+#flip-btn:active {
+    background: var(--surface-hover);
+    transform: scale(0.98);
+}
+
+#flip-btn span {
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--text-mid);
+    letter-spacing: 0.5px;
+}
+
+/* ── 答题按钮 ──────────────────────────────────────── */
+#answer-buttons {
+    display: flex;
+    flex-shrink: 0;
+    padding-bottom: var(--safe-bottom);
+}
+
+.answer-btn {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 2px;
+    padding: 14px 4px;
+    border: none;
+    color: #fff;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: opacity 0.12s, transform 0.1s;
+    letter-spacing: 0.3px;
+}
+
+.answer-btn:active { opacity: 0.7; transform: scale(0.96); }
+.answer-btn .btn-label { font-size: 13px; }
+.answer-btn .btn-time { font-size: 10px; opacity: 0.7; letter-spacing: 0; }
+
+.again {
+    background: hsl(0, 43%, 42%);
+    border-radius: var(--radius-sm) 0 0 var(--radius-sm);
+}
+.hard  { background: hsl(38, 39%, 38%); }
+.good  { background: hsl(145, 32%, 36%); }
+.easy  {
+    background: hsl(215, 36%, 40%);
+    border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+}
+
+/* ── 全屏界面 ──────────────────────────────────────── */
+.screen {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 32px;
+    text-align: center;
+}
+
+.screen-icon {
+    font-size: 56px;
+    margin-bottom: 20px;
+}
+
+.screen h2 {
+    font-size: 20px;
+    font-weight: 600;
+    margin-bottom: 10px;
+    letter-spacing: 0.3px;
+}
+
+.screen p {
+    color: var(--text-dim);
+    margin-bottom: 8px;
+    font-size: 14px;
+}
+
+.countdown {
+    font-size: 16px;
+    color: var(--text-dim);
+}
+
+.countdown-num {
+    font-size: 52px;
+    font-weight: 200;
+    color: var(--good);
+    display: block;
+    margin: 12px 0;
+    letter-spacing: -2px;
+    font-variant-numeric: tabular-nums;
+}
+
+/* ── 按钮 ──────────────────────────────────────────── */
+.btn-primary {
+    padding: 13px 28px;
+    background: var(--good);
+    color: #000;
+    border: none;
+    border-radius: var(--radius-sm);
+    font-size: 15px;
+    font-weight: 600;
+    cursor: pointer;
+    margin-top: 16px;
+    transition: opacity 0.15s;
+}
+.btn-primary:active { opacity: 0.8; }
+
+.btn-secondary {
+    padding: 13px 28px;
+    background: var(--glass);
+    color: var(--text-mid);
+    border: 1px solid var(--glass-border);
+    border-radius: var(--radius-sm);
+    font-size: 15px;
+    cursor: pointer;
+    margin-top: 8px;
+    transition: background 0.15s;
+}
+.btn-secondary:active { background: var(--surface-hover); }
+
+.btn-icon {
+    background: transparent;
+    border: none;
+    color: var(--text-dim);
+    font-size: 18px;
+    padding: 6px 10px;
+    cursor: pointer;
+    transition: color 0.15s;
+}
+.btn-icon:active { color: var(--text-mid); }
+
+/* ── 牌组选择 ──────────────────────────────────────── */
+#deck-selector {
+    position: fixed;
+    inset: 0;
+    background: rgba(15, 17, 23, 0.95);
+    backdrop-filter: blur(24px);
+    -webkit-backdrop-filter: blur(24px);
+    z-index: 100;
+    overflow-y: auto;
+    padding: 24px 18px;
+}
+
+#deck-selector h2 {
+    margin-bottom: 20px;
+    font-size: 18px;
+    font-weight: 600;
+    letter-spacing: 0.3px;
+}
+
+#deck-list {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.deck-item {
+    padding: 14px 16px;
+    background: var(--glass);
+    border: 1px solid var(--glass-border);
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: background 0.15s;
+}
+
+.deck-item:active { background: var(--surface-hover); }
+
+.deck-item .deck-item-name {
+    font-weight: 600;
+    font-size: 14px;
+    color: var(--text);
+}
+
+.deck-item .deck-item-counts {
+    font-size: 11px;
+    color: var(--text-dim);
+    margin-top: 4px;
+    letter-spacing: 0.3px;
+}
+
+.btn-back {
+    padding: 12px 24px;
+    background: var(--glass);
+    color: var(--text-mid);
+    border: 1px solid var(--glass-border);
+    border-radius: var(--radius-sm);
+    font-size: 14px;
+    cursor: pointer;
+    margin-top: 20px;
+    transition: background 0.15s;
+}
+.btn-back:active { background: var(--surface-hover); }
+
+/* ── 加载动画 ──────────────────────────────────────── */
+.spinner {
+    width: 36px;
+    height: 36px;
+    border: 3px solid rgba(255, 255, 255, 0.1);
+    border-top-color: var(--good);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+    margin-bottom: 16px;
+}
+
+@keyframes spin {
+    to { transform: rotate(360deg); }
+}
+
+/* ── 错误界面 ──────────────────────────────────────── */
+#error-message {
+    color: var(--text-dim);
+    font-size: 13px;
+    max-width: 80%;
+    word-break: break-word;
+    line-height: 1.5;
+}

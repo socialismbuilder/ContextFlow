@@ -15,6 +15,7 @@ from . import main_logic
 from . import api_client
 from .card.card_template_manager import update_card_templates
 from aqt import gui_hooks
+import aqt
 
 # Initialize the addon:
 # 1. Register the configuration menu item
@@ -25,6 +26,21 @@ main_logic.register_hooks()
 
 # 3. Update saved sentence card templates after profile loads
 gui_hooks.profile_did_open.append(lambda: update_card_templates())
+
+# 4. Web server for mobile review
+from . import web_server as _web_server
+
+def _start_web_server():
+    """启动 Web 服务器（延迟到 profile 加载后）"""
+    try:
+        config = aqt.mw.addonManager.getConfig(__name__.split('.')[0]) or {}
+        port = config.get("web_port", 8765)
+        _web_server.start(aqt.mw, port=port)
+    except Exception as e:
+        print(f"[ContextFlow Web] 启动失败: {e}")
+
+gui_hooks.profile_did_open.append(lambda: _start_web_server())
+gui_hooks.profile_will_close.append(lambda: _web_server.stop())
 
 
 print("AI Example Sentences Addon Loaded Successfully (Refactored with Task Queue)")
