@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """
 Web 端卡片操作封装 —— 线程安全的卡片获取、渲染、答题逻辑。
-所有 mw.col 操作必须在 Qt 主线程执行，由调用方通过 _run_on_main() 桥接。
+所有 mw.col 操作必须在 Qt 主线程执行，由调用方通过 run_on_main_async() 异步桥接。
 """
 
 import re
@@ -23,7 +23,7 @@ def rewrite_media_urls(html: str) -> str:
         r'\[sound:([^\]]+)\]',
         r'<audio controls src="/media/\1" preload="auto"></audio>',
         html,
-    )
+    ) 
     # 移除 pycmd() 调用（Anki 内部 JS bridge，Web 端不可用）
     html = re.sub(r'pycmd\([^)]*\)', '', html)
     # 移除 [anki:play:...] 标签

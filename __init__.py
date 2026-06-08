@@ -34,6 +34,9 @@ def _start_web_server():
     """启动 Web 服务器（延迟到 profile 加载后）"""
     try:
         config = aqt.mw.addonManager.getConfig(__name__.split('.')[0]) or {}
+        if not config.get("web_enabled", True):
+            print("[ContextFlow Web] Web 后端已禁用")
+            return
         port = config.get("web_port", 8765)
         _web_server.start(aqt.mw, port=port)
     except Exception as e:

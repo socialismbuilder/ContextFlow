@@ -2,13 +2,16 @@
 """
 Web 服务器 —— 基于 aiohttp 的局域网复习后端。
 手机浏览器通过此服务获取卡片、答题、播放媒体。
+
+关键设计：所有 Qt 主线程操作通过 run_on_main_async() 异步桥接，
+绝不阻塞 aiohttp 事件循环，避免网络问题导致 Anki 卡死。
 """
 
 import json
 import os
+import asyncio
 import threading
 import mimetypes
-import concurrent.futures
 from pathlib import Path
 
 from aiohttp import web
@@ -19,7 +22,10 @@ from . import web_card
 
 _server_thread: threading.Thread | None = None
 _runner: web.AppRunner | None = None
-_aiohttp_loop = None
+_aiohttp_loop: asyncio.AbstractEventLoop | None = None
+
+# 默认等待 Qt 主线程的最大秒数
+_MAIN_THREAD_TIMEOUT = 10
 
 
 def start(mw, port: int = 8765):
@@ -44,9 +50,20 @@ def start(mw, port: int = 8765):
 def stop():
     """停止 Web 服务器。"""
     global _runner, _server_thread, _aiohttp_loop
-    if _aiohttp_loop is not None:
-        _aiohttp_loop.call_soon_threadsafe(_aiohttp_loop.stop)
+    loop = _aiohttp_loop
+    if loop is not None and loop.is_running():
+        loop.call_soon_threadsafe(loop.stop)
     if _runner is not None:
+        runner = _runner
+        # 在后台清理 runner，不阻塞调用方
+        def _cleanup():
+            try:
+                loop2 = asyncio.new_event_loop()
+                loop2.run_until_complete(runner.cleanup())
+                loop2.close()
+            except Exception:
+                pass
+        threading.Thread(target=_cleanup, daemon=True).start()
         _runner = None
     _server_thread = None
     _aiohttp_loop = None
@@ -78,23 +95,37 @@ def _run_server(app: web.Application, port: int):
         loop.close()
 
 
-# ── 线程安全桥接 ──────────────────────────────────────────────
+# ── 异步线程安全桥接 ──────────────────────────────────────────
 
-def _run_on_main(mw, func, timeout=15):
-    """在 Qt 主线程执行 func 并返回结果。"""
-    future = concurrent.futures.Future()
+async def run_on_main_async(mw, func, timeout=_MAIN_THREAD_TIMEOUT):
+    """
+    在 Qt 主线程执行 func 并异步等待结果，不阻塞 aiohttp 事件循环。
+
+    - 用 asyncio.Future 挂起当前协程，事件循环可继续处理其他请求
+    - mw.taskman.run_on_main 将任务派发到 Qt 主线程
+    - 超时后返回 None 而非抛异常，避免网络抖动导致连续崩溃
+    """
+    aio_future = asyncio.get_event_loop().create_future()
 
     def wrapper():
         try:
             result = func()
-            future.set_result(result)
+            # 结果回到 aiohttp 线程
+            if not aio_future.done():
+                aio_future.get_loop().call_soon_threadsafe(aio_future.set_result, result)
         except Exception as e:
             import traceback
             traceback.print_exc()
-            future.set_exception(e)
+            if not aio_future.done():
+                aio_future.get_loop().call_soon_threadsafe(aio_future.set_exception, e)
 
     mw.taskman.run_on_main(wrapper)
-    return future.result(timeout=timeout)
+
+    try:
+        return await asyncio.wait_for(aio_future, timeout=timeout)
+    except asyncio.TimeoutError:
+        print(f"[ContextFlow Web] 主线程操作超时 ({timeout}s): {getattr(func, '__name__', repr(func))}")
+        return None
 
 
 # ── 创建 App ──────────────────────────────────────────────────
@@ -132,13 +163,17 @@ def _create_app(mw) -> web.Application:
 
 async def _handle_status(request: web.Request) -> web.Response:
     mw = request.app["mw"]
-    data = _run_on_main(mw, lambda: web_card.get_status(mw))
+    data = await run_on_main_async(mw, lambda: web_card.get_status(mw))
+    if data is None:
+        return web.json_response({"error": "主线程繁忙，请稍后重试"}, status=503)
     return web.json_response(data)
 
 
 async def _handle_decks(request: web.Request) -> web.Response:
     mw = request.app["mw"]
-    data = _run_on_main(mw, lambda: web_card.get_decks(mw))
+    data = await run_on_main_async(mw, lambda: web_card.get_decks(mw))
+    if data is None:
+        return web.json_response({"error": "主线程繁忙，请稍后重试"}, status=503)
     return web.json_response(data)
 
 
@@ -148,7 +183,9 @@ async def _handle_deck_select(request: web.Request) -> web.Response:
     deck_id = body.get("deck_id")
     if not deck_id:
         return web.json_response({"error": "缺少 deck_id"}, status=400)
-    data = _run_on_main(mw, lambda: web_card.select_deck(mw, int(deck_id)))
+    data = await run_on_main_async(mw, lambda: web_card.select_deck(mw, int(deck_id)))
+    if data is None:
+        return web.json_response({"error": "主线程繁忙，请稍后重试"}, status=503)
     return web.json_response(data)
 
 
@@ -162,7 +199,9 @@ _session = {
 async def _handle_card_next(request: web.Request) -> web.Response:
     mw = request.app["mw"]
     try:
-        data = _run_on_main(mw, lambda: web_card.get_next_card(mw))
+        data = await run_on_main_async(mw, lambda: web_card.get_next_card(mw))
+        if data is None:
+            return web.json_response({"error": "主线程繁忙，请稍后重试"}, status=503)
         if data.get("status") == "card":
             _session["current_card_id"] = data["card_id"]
         return web.json_response(data)
@@ -177,7 +216,9 @@ async def _handle_card_show(request: web.Request) -> web.Response:
     card_id = _session.get("current_card_id")
     if not card_id:
         return web.json_response({"error": "没有当前卡片"}, status=400)
-    data = _run_on_main(mw, lambda: web_card.get_answer(mw, card_id))
+    data = await run_on_main_async(mw, lambda: web_card.get_answer(mw, card_id))
+    if data is None:
+        return web.json_response({"error": "主线程繁忙，请稍后重试"}, status=503)
     return web.json_response(data)
 
 
@@ -188,7 +229,9 @@ async def _handle_card_answer(request: web.Request) -> web.Response:
     ease = body.get("ease")
     if not card_id or not ease:
         return web.json_response({"error": "缺少 card_id 或 ease"}, status=400)
-    data = _run_on_main(mw, lambda: web_card.answer_card(mw, int(card_id), int(ease)))
+    data = await run_on_main_async(mw, lambda: web_card.answer_card(mw, int(card_id), int(ease)))
+    if data is None:
+        return web.json_response({"error": "主线程繁忙，请稍后重试"}, status=503)
     if data.get("status") == "card":
         _session["current_card_id"] = data["card_id"]
     else:
@@ -199,15 +242,16 @@ async def _handle_card_answer(request: web.Request) -> web.Response:
 async def _handle_card_sentence(request: web.Request) -> web.Response:
     """检查当前卡片的例句是否已生成。用于手机端轮询。"""
     mw = request.app["mw"]
-    data = _run_on_main(mw, lambda: web_card.check_sentence_status(mw))
+    data = await run_on_main_async(mw, lambda: web_card.check_sentence_status(mw))
+    if data is None:
+        return web.json_response({"error": "主线程繁忙，请稍后重试"}, status=503)
     return web.json_response(data)
 
 
 # ── TTS 服务 ──────────────────────────────────────────────────
 
 async def _handle_tts(request: web.Request) -> web.Response:
-    """生成 TTS 音频并返回 MP3。"""
-    import tempfile
+    """生成 TTS 音频并返回 MP3。不阻塞事件循环。"""
     text = request.match_info["text"]
     if not text:
         return web.json_response({"error": "缺少文本"}, status=400)
@@ -220,18 +264,26 @@ async def _handle_tts(request: web.Request) -> web.Response:
             return audio_data
         return None
 
+    # 先尝试在主线程生成（部分 TTS 引擎需要），但异步等待，超时不卡死
+    audio_data = None
     try:
-        audio_data = _run_on_main(request.app["mw"], _generate_tts)
+        audio_data = await run_on_main_async(request.app["mw"], _generate_tts, timeout=15)
     except Exception:
         audio_data = None
 
-    # 如果主线程生成失败，在后台线程尝试（edge-tts 不需要主线程）
+    # 如果主线程生成失败或超时，在后台线程重试（edge-tts 不需要主线程）
     if audio_data is None:
+        loop = asyncio.get_event_loop()
         try:
             from .tts.tts_manager import tts_manager
-            audio_data = tts_manager.generate(text)
+            audio_data = await asyncio.wait_for(
+                loop.run_in_executor(None, lambda: tts_manager.generate(text)),
+                timeout=30,
+            )
             if audio_data:
                 audio_data = audio_data[0]
+        except asyncio.TimeoutError:
+            return web.json_response({"error": "TTS 生成超时"}, status=504)
         except Exception as e:
             return web.json_response({"error": f"TTS 生成失败: {e}"}, status=500)
 
@@ -252,9 +304,9 @@ async def _handle_media(request: web.Request) -> web.Response:
     mw = request.app["mw"]
     rel_path = request.match_info["path"]
 
-    media_dir = _run_on_main(mw, lambda: mw.col.media.dir())
+    media_dir = await run_on_main_async(mw, lambda: mw.col.media.dir())
     if not media_dir:
-        return web.json_response({"error": "媒体目录不可用"}, status=500)
+        return web.json_response({"error": "媒体目录不可用"}, status=503)
 
     # 安全检查：防止路径遍历
     file_path = os.path.normpath(os.path.join(media_dir, rel_path))

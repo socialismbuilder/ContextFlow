@@ -8,7 +8,8 @@ import aqt
 from aqt.qt import (
     QDialog, QVBoxLayout, QFormLayout, QLabel, QLineEdit, QPushButton, QComboBox,
     QGroupBox, QHBoxLayout, QWidget, QDialogButtonBox, QMessageBox, QApplication,
-    QTabWidget, QTextEdit, QSplitter, Qt, QGridLayout, QCompleter, QScrollArea
+    QTabWidget, QTextEdit, QSplitter, Qt, QGridLayout, QCompleter, QScrollArea,
+    QCheckBox, QSpinBox
 )
 from ..config_manager import get_config, save_config
 from ..cache.cache_manager import clear_cache
@@ -158,15 +159,7 @@ def add_Preferences_setting(parent_dialog, basic_layout, current_config):
     basic_layout.addWidget(prefs_group)
 
 def add_othersetting(parent_dialog, basic_layout, current_config):
-    other_group = QGroupBox("其他")
-    other_layout = QFormLayout()
-
-    parent_dialog.deck_name = QLineEdit(current_config.get("deck_name", ""))
-    other_layout.addRow("目标牌组名称:", parent_dialog.deck_name)
-
-    parent_dialog.save_deck = QLineEdit(current_config.get("save_deck", "这里填写收藏例句的牌组"))
-    other_layout.addRow("收藏牌组名称:", parent_dialog.save_deck)
-
+    # ── 提前创建 learning_language_combo（TTS 信号需要引用） ──────
     parent_dialog.learning_language_combo = NoWheelComboBox()
     languages = ["英语", "法语", "日语", "西班牙语", "德语", "韩语", "俄语", "意大利语", "葡萄牙语", "阿拉伯语", "印地语"]
     parent_dialog.learning_language_combo.addItems(languages)
@@ -175,6 +168,93 @@ def add_othersetting(parent_dialog, basic_layout, current_config):
         parent_dialog.learning_language_combo.setCurrentText(saved_language)
     else:
         parent_dialog.learning_language_combo.setCurrentText("英语")
+
+    # ── TTS 设置（独立分组） ─────────────────────────────────────
+    tts_group = QGroupBox("TTS 语音")
+    tts_layout = QFormLayout()
+
+    parent_dialog.tts_engine_combo = NoWheelComboBox()
+    tts_engine_labels = {
+        "edge_tts": "Edge TTS (高质量高延时)",
+        "apple_tts": "Apple TTS (按语言跟随 macOS voice，无缓存)",
+        "anki_native": "Anki 原生 TTS (低质量低延时)",
+        "custom_url": "自定义 URL",
+    }
+    parent_dialog.tts_engine_combo.addItems(tts_engine_labels.values())
+    saved_tts = current_config.get("tts_engine", "edge_tts")
+    saved_tts_label = tts_engine_labels.get(saved_tts, "Edge TTS (高质量高延时)")
+    parent_dialog.tts_engine_combo.setCurrentText(saved_tts_label)
+
+    # Edge TTS voice picker
+    parent_dialog.edge_voice_combo = NoWheelComboBox()
+    saved_language_for_voice = current_config.get("learning_language", "英语")
+    override_key = f"edge_tts_voice_{saved_language_for_voice}"
+    saved_voice = current_config.get(override_key, "")
+    _populate_voice_combo(parent_dialog, saved_language_for_voice, saved_voice)
+    parent_dialog.edge_voice_combo.setVisible(saved_tts == "edge_tts")
+
+    parent_dialog.tts_custom_url = QLineEdit(current_config.get("tts_custom_url", ""))
+    parent_dialog.tts_custom_url.setPlaceholderText("POST {text, voice, language} → 返回音频文件")
+    parent_dialog.tts_custom_url.setVisible(saved_tts == "custom_url")
+
+    tts_layout.addRow("TTS 引擎:", parent_dialog.tts_engine_combo)
+    tts_layout.addRow("Edge 人声:", parent_dialog.edge_voice_combo)
+    tts_layout.addRow("", parent_dialog.tts_custom_url)
+
+    def _on_tts_engine_changed(text):
+        parent_dialog.tts_custom_url.setVisible("自定义" in text)
+        parent_dialog.edge_voice_combo.setVisible("Edge" in text)
+
+    parent_dialog.tts_engine_combo.currentTextChanged.connect(_on_tts_engine_changed)
+
+    # Refresh voice list when learning language changes
+    parent_dialog.learning_language_combo.currentTextChanged.connect(
+        lambda lang: _on_learning_language_changed(parent_dialog, lang)
+    )
+
+    parent_dialog.tts_replace_audio = QCheckBox("替代卡片原有声音（自动朗读例句）")
+    parent_dialog.tts_replace_audio.setChecked(current_config.get("tts_replace_audio", False))
+    tts_layout.addRow("", parent_dialog.tts_replace_audio)
+
+    tts_group.setLayout(tts_layout)
+    basic_layout.addWidget(tts_group)
+
+    # ── Web 后端设置（独立分组） ─────────────────────────────────
+    web_group = QGroupBox("Web 后端（手机复习）")
+    web_layout = QFormLayout()
+
+    parent_dialog.web_enabled = QCheckBox("启用 Web 后端服务")
+    parent_dialog.web_enabled.setChecked(current_config.get("web_enabled", True))
+
+    parent_dialog.web_port = QSpinBox()
+    parent_dialog.web_port.setRange(1024, 65535)
+    parent_dialog.web_port.setValue(current_config.get("web_port", 8765))
+
+    web_row = QWidget()
+    web_row_layout = QHBoxLayout(web_row)
+    web_row_layout.setContentsMargins(0, 0, 0, 0)
+    web_row_layout.addWidget(parent_dialog.web_enabled, 1)
+    web_row_layout.addWidget(QLabel("端口:"))
+    web_row_layout.addWidget(parent_dialog.web_port, 1)
+    web_layout.addRow(web_row)
+
+    def _on_web_enabled_changed(checked):
+        parent_dialog.web_port.setEnabled(checked)
+    parent_dialog.web_enabled.toggled.connect(_on_web_enabled_changed)
+    _on_web_enabled_changed(parent_dialog.web_enabled.isChecked())
+
+    web_group.setLayout(web_layout)
+    basic_layout.addWidget(web_group)
+
+    # ── 其他 ──────────────────────────────────────────────────────
+    other_group = QGroupBox("其他")
+    other_layout = QFormLayout()
+
+    parent_dialog.deck_name = QLineEdit(current_config.get("deck_name", ""))
+    other_layout.addRow("目标牌组名称:", parent_dialog.deck_name)
+
+    parent_dialog.save_deck = QLineEdit(current_config.get("save_deck", "这里填写收藏例句的牌组"))
+    other_layout.addRow("收藏牌组名称:", parent_dialog.save_deck)
 
     parent_dialog.prompt_name_combo = NoWheelComboBox()
     custom_prompts = current_config.get("custom_prompts", {})
@@ -206,64 +286,15 @@ def add_othersetting(parent_dialog, basic_layout, current_config):
         parent_dialog.font_combo.setCurrentText(saved_font)
     else:
         parent_dialog.font_combo.setCurrentText("默认字体")
-    
+
     # 连接字体变化事件，以便更新卡片模板
     parent_dialog.font_combo.currentTextChanged.connect(lambda: _on_font_changed(parent_dialog))
 
     other_layout.addRow("字体选择:", parent_dialog.font_combo)
 
-    # TTS 设置
-    parent_dialog.tts_engine_combo = NoWheelComboBox()
-    tts_engine_labels = {
-        "edge_tts": "Edge TTS (高质量高延时)",
-        "apple_tts": "Apple TTS (按语言跟随 macOS voice，无缓存)",
-        "anki_native": "Anki 原生 TTS (低质量低延时)",
-        "custom_url": "自定义 URL",
-    }
-    parent_dialog.tts_engine_combo.addItems(tts_engine_labels.values())
-    saved_tts = current_config.get("tts_engine", "edge_tts")
-    saved_tts_label = tts_engine_labels.get(saved_tts, "Edge TTS (高质量高延时)")
-    parent_dialog.tts_engine_combo.setCurrentText(saved_tts_label)
-
-    parent_dialog.tts_custom_url = QLineEdit(current_config.get("tts_custom_url", ""))
-    parent_dialog.tts_custom_url.setPlaceholderText("POST {text, voice, language} → 返回音频文件")
-
-    tts_engine_widget = QWidget()
-    tts_engine_layout = QVBoxLayout(tts_engine_widget)
-    tts_engine_layout.setContentsMargins(0, 0, 0, 0)
-    tts_engine_layout.addWidget(parent_dialog.tts_engine_combo)
-    tts_engine_layout.addWidget(parent_dialog.tts_custom_url)
-    parent_dialog.tts_custom_url.setVisible(saved_tts == "custom_url")
-
-    # Edge TTS voice picker
-    parent_dialog.edge_voice_combo = NoWheelComboBox()
-    saved_language = current_config.get("learning_language", "英语")
-    override_key = f"edge_tts_voice_{saved_language}"
-    saved_voice = current_config.get(override_key, "")
-    _populate_voice_combo(parent_dialog, saved_language, saved_voice)
-    parent_dialog.edge_voice_combo.setVisible(saved_tts == "edge_tts")
-    tts_engine_layout.addWidget(parent_dialog.edge_voice_combo)
-
-    def _on_tts_engine_changed(text):
-        parent_dialog.tts_custom_url.setVisible("自定义" in text)
-        parent_dialog.edge_voice_combo.setVisible("Edge" in text)
-
-    parent_dialog.tts_engine_combo.currentTextChanged.connect(_on_tts_engine_changed)
-
-    # Refresh voice list when learning language changes
-    parent_dialog.learning_language_combo.currentTextChanged.connect(
-        lambda lang: _on_learning_language_changed(parent_dialog, lang)
-    )
-
-    other_layout.addRow("TTS 引擎:", tts_engine_widget)
-
-    from aqt.qt import QCheckBox
-    parent_dialog.tts_replace_audio = QCheckBox("替代卡片原有声音（自动朗读例句）")
-    parent_dialog.tts_replace_audio.setChecked(current_config.get("tts_replace_audio", False))
-    other_layout.addRow("", parent_dialog.tts_replace_audio)
-
     other_group.setLayout(other_layout)
     basic_layout.addWidget(other_group)
+
     basic_layout.addStretch()
 
     # Kick off Edge TTS voice list fetch in background; refresh combo when done
@@ -550,6 +581,8 @@ def save_basic_settings(parent_dialog):
         "tts_engine": tts_engine_value,
         "tts_custom_url": parent_dialog.tts_custom_url.text(),
         "tts_replace_audio": parent_dialog.tts_replace_audio.isChecked(),
+        "web_enabled": parent_dialog.web_enabled.isChecked(),
+        "web_port": parent_dialog.web_port.value(),
     }
 
     current_full_config = get_config()
