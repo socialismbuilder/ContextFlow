@@ -15,7 +15,7 @@ from ..config_manager import get_config, save_config
 from ..cache.cache_manager import clear_cache
 from .. import api_client
 from ..card.card_template_manager import update_card_templates
-from PyQt6.QtCore import QTimer
+from PyQt6.QtCore import QTimer, QObject, pyqtSignal as Signal
 
 # Custom ComboBox to ignore wheel events
 class NoWheelComboBox(QComboBox):
@@ -190,7 +190,8 @@ def add_othersetting(parent_dialog, basic_layout, current_config):
     saved_language_for_voice = current_config.get("learning_language", "英语")
     override_key = f"edge_tts_voice_{saved_language_for_voice}"
     saved_voice = current_config.get(override_key, "")
-    _populate_voice_combo(parent_dialog, saved_language_for_voice, saved_voice)
+    # Don't populate yet – voice list is not loaded; will populate after load completes
+    parent_dialog.edge_voice_combo.addItem("(加载中…)", "")
     parent_dialog.edge_voice_combo.setVisible(saved_tts == "edge_tts")
 
     parent_dialog.tts_custom_url = QLineEdit(current_config.get("tts_custom_url", ""))
@@ -301,19 +302,21 @@ def add_othersetting(parent_dialog, basic_layout, current_config):
     from ..tts.tts_manager import ensure_voice_list_loaded
     ensure_voice_list_loaded()
 
+    class _VoiceLoadSignal(QObject):
+        ready = Signal()
+
+    _voice_sig = _VoiceLoadSignal()
+    _voice_sig.ready.connect(lambda: _populate_voice_combo(
+        parent_dialog,
+        parent_dialog.learning_language_combo.currentText(),
+        saved_voice,
+    ))
+
     def _refresh_voice_combo_after_load():
-        """Wait for voice list to load, then refresh the combo on the main thread."""
-        from ..tts.tts_manager import _voice_list_lock, _cached_voice_list
-        for _ in range(50):  # poll every 100ms, up to 5 seconds
-            with _voice_list_lock:
-                if _cached_voice_list:
-                    break
-            time.sleep(0.1)
-        QTimer.singleShot(0, lambda: _populate_voice_combo(
-            parent_dialog,
-            parent_dialog.learning_language_combo.currentText(),
-            parent_dialog.edge_voice_combo.currentData() or "",
-        ))
+        """Wait for voice list to load, then emit signal to refresh on the main thread."""
+        from ..tts.tts_manager import _voice_list_event
+        _voice_list_event.wait(timeout=15)
+        _voice_sig.ready.emit()
 
     threading.Thread(target=_refresh_voice_combo_after_load, daemon=True).start()
 

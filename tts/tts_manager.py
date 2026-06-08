@@ -108,7 +108,7 @@ LANG_TO_LOCALE_PREFIX = {
 # Module-level cache for the Edge TTS voice list (fetched once per session)
 _cached_voice_list: list[dict] = []
 _voice_list_lock = threading.Lock()
-_voice_list_fetched = False
+_voice_list_event = threading.Event()  # set() once the voice list has been fetched
 
 
 def _fetch_voice_list() -> list[dict]:
@@ -154,17 +154,15 @@ def get_voices_for_language(language: str) -> list[dict]:
 def ensure_voice_list_loaded():
     """If the voice list hasn't been fetched yet, kick off a background thread.
     Safe to call multiple times."""
-    global _voice_list_fetched
-    with _voice_list_lock:
-        if _voice_list_fetched:
-            return
-        _voice_list_fetched = True
+    if _voice_list_event.is_set():
+        return
 
     def _load():
         result = _fetch_voice_list()
         with _voice_list_lock:
             _cached_voice_list.clear()
             _cached_voice_list.extend(result)
+        _voice_list_event.set()
 
     threading.Thread(target=_load, daemon=True).start()
 
