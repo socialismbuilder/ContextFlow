@@ -194,27 +194,36 @@ def _render_card_data(mw, card) -> dict:
     """将卡片渲染为 API 响应数据，一次性返回正面和背面。"""
     from . import main_logic
     from .card.card_template_manager import get_web_back_html
+    from .config_manager import get_config
 
     states = mw.col._backend.get_scheduling_states(card.id)
     labels = mw.col._backend.describe_next_states(states)
+
+    # 判断是否为目标牌组
+    config = get_config()
+    config_deck_name = config.get("deck_name")
+    field_index_match = re.search(r'\[(\d+)\]$', config_deck_name)
+    base_deck_name = re.sub(r'\[\d+\]$', '', config_deck_name) if field_index_match else config_deck_name
+    current_deck = mw.col.decks.name(card.did)
+    is_target = _is_target_deck(card, current_deck, base_deck_name)
 
     # 渲染 contextflow 例句正面（例句+翻译隐藏条）
     raw_question = card.question()
     question_html = _render_web_question(card, raw_question)
 
-    # 渲染 contextflow 例句背面（例句+翻译）和原始卡片背面，分开返回
-    sentence = main_logic.showing_sentence
-    translation = main_logic.showing_translation
-    keyword = main_logic.showing_keyword
-    if sentence and sentence != "例句生成中...":
-        sentence_back_html = get_web_back_html(sentence, translation, "", keyword)
-        sentence_back_html = rewrite_media_urls(sentence_back_html)
-    else:
-        sentence_back_html = ""
-
-    # 原始卡片背面（不含我们的例句）
+    # 原始卡片背面
     raw_answer = card.answer()
     origin_html = rewrite_media_urls(raw_answer)
+
+    # 只有目标牌组才生成我们的例句背面
+    sentence_back_html = ""
+    if is_target:
+        sentence = main_logic.showing_sentence
+        translation = main_logic.showing_translation
+        keyword = main_logic.showing_keyword
+        if sentence and sentence != "例句生成中...":
+            sentence_back_html = get_web_back_html(sentence, translation, "", keyword)
+            sentence_back_html = rewrite_media_urls(sentence_back_html)
 
     css = card.render_output().css
     counts = mw.col.sched.counts(card)

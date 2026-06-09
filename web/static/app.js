@@ -68,6 +68,8 @@ function handleCardResponse(data) {
 function showQuestion(data) {
     hideAllScreens();
 
+    const isTarget = !!data.sentence_back_html;
+
     // 例句+隐藏条 → contextflow-content
     document.getElementById('contextflow-content').innerHTML = data.question_html || '';
     document.getElementById('origin-content').innerHTML = '';
@@ -75,7 +77,7 @@ function showQuestion(data) {
 
     // 缓存背面数据，翻面时不再请求后端
     cachedOriginHtml = data.origin_html || null;
-    cachedSentenceBackHtml = data.sentence_back_html || null;
+    cachedSentenceBackHtml = isTarget ? (data.sentence_back_html || null) : null;
 
     // 更新计数
     if (data.counts) {
@@ -90,20 +92,30 @@ function showQuestion(data) {
         }
     }
 
-    // 显示例句区，隐藏原始卡片区和答题按钮
-    document.getElementById('contextflow-side').classList.remove('hidden');
-    document.getElementById('origin-side').classList.add('hidden');
+    if (isTarget) {
+        // 目标牌组：显示例句区，隐藏原始卡片区
+        document.getElementById('contextflow-side').classList.remove('hidden');
+        document.getElementById('origin-side').classList.add('hidden');
+    } else {
+        // 非目标牌组：隐藏例句区，原始卡片区显示正面
+        document.getElementById('contextflow-side').classList.add('hidden');
+        document.getElementById('origin-side').classList.remove('hidden');
+        document.getElementById('origin-content').innerHTML = data.question_html || '';
+    }
     document.getElementById('answer-buttons').classList.add('hidden');
     document.getElementById('flip-btn').classList.remove('hidden');
+    document.getElementById('flip-area').classList.remove('hidden');
     document.getElementById('card-area').classList.remove('hidden');
 
     playAutoAudio();
 
-    // 自动点击朗读单词按钮
-    setTimeout(() => {
-        const btn = document.getElementById('tts-word');
-        if (btn && !btn.classList.contains('loading')) { btn.click(); }
-    }, 300);
+    // 自动点击朗读单词按钮（仅目标牌组）
+    if (isTarget) {
+        setTimeout(() => {
+            const btn = document.getElementById('tts-word');
+            if (btn && !btn.classList.contains('loading')) { btn.click(); }
+        }, 300);
+    }
 
     // 如果内容中有"例句生成中..."，启动轮询检查例句是否就绪
     if (data.question_html && data.question_html.includes('例句生成中')) {
@@ -117,11 +129,19 @@ function showQuestion(data) {
 async function showAnswer() {
     if (!currentCardId) return;
 
-    document.getElementById('flip-btn').classList.add('hidden');
+    const isTarget = !!cachedSentenceBackHtml;
 
-    // 用例句+翻译替换 contextflow-content 中的隐藏条
-    if (cachedSentenceBackHtml) {
-        document.getElementById('contextflow-content').innerHTML = cachedSentenceBackHtml;
+    document.getElementById('flip-btn').classList.add('hidden');
+    document.getElementById('flip-area').classList.add('hidden');
+
+    if (isTarget) {
+        // 目标牌组：用例句+翻译替换 contextflow-content 中的隐藏条
+        if (cachedSentenceBackHtml) {
+            document.getElementById('contextflow-content').innerHTML = cachedSentenceBackHtml;
+        }
+    } else {
+        // 非目标牌组：隐藏正面（origin_html 已包含完整背面）
+        document.getElementById('contextflow-side').classList.add('hidden');
     }
 
     // 显示原始卡片背面
@@ -141,11 +161,13 @@ async function showAnswer() {
     document.getElementById('origin-side').classList.remove('hidden');
     document.getElementById('answer-buttons').classList.remove('hidden');
 
-    // 自动点击朗读单词按钮
-    setTimeout(() => {
-        const btn = document.getElementById('tts-word');
-        if (btn && !btn.classList.contains('loading')) { btn.click(); }
-    }, 300);
+    // 自动点击朗读单词按钮（仅目标牌组）
+    if (isTarget) {
+        setTimeout(() => {
+            const btn = document.getElementById('tts-word');
+            if (btn && !btn.classList.contains('loading')) { btn.click(); }
+        }, 300);
+    }
 
     playAutoAudio();
 }
@@ -310,3 +332,275 @@ async function pollSentence() {
         console.error('[ContextFlow] sentence poll error:', e);
     }
 }
+
+// ── 悬浮操作按钮（FAB）────────────────────────────────
+(function() {
+    const fab = document.getElementById('fab');
+    const container = document.getElementById('fab-container');
+    const indicator = document.getElementById('fab-indicator');
+
+    if (!fab || !container) return;
+
+    // 方向定义：角度 → 操作
+    // 以正上方为0°，顺时针：上→简单，右→困难，下→重来，左→良好
+    const DIRECTIONS = {
+        up:    { label: '良好', icon: '🙂', ease: 3, cls: 'hint-up' },
+        right: { label: '简单', icon: '😊', ease: 4, cls: 'hint-right' },
+        down:  { label: '重来', icon: '😣', ease: 1, cls: 'hint-down' },
+        left:  { label: '困难', icon: '😐', ease: 2, cls: 'hint-left' },
+    };
+
+    // 保存位置
+    let fabPos = { x: window.innerWidth - 72, y: window.innerHeight - 140 };
+    let isDragging = false;
+    let longPressTimer = null;
+    let isLongPress = false;
+    let startX = 0, startY = 0;
+    let dragOffsetX = 0, dragOffsetY = 0;
+    let currentDirection = null;
+
+    // 创建方向提示元素
+    const hints = {};
+    Object.keys(DIRECTIONS).forEach(dir => {
+        const el = document.createElement('div');
+        el.className = 'fab-direction-hint ' + DIRECTIONS[dir].cls;
+        el.textContent = DIRECTIONS[dir].icon;
+        container.appendChild(el);
+        hints[dir] = el;
+    });
+
+    function setFabPosition(x, y) {
+        const maxX = window.innerWidth - 56;
+        const maxY = window.innerHeight - 56;
+        fabPos.x = Math.max(4, Math.min(maxX, x));
+        fabPos.y = Math.max(4, Math.min(maxY, y));
+        container.style.left = fabPos.x + 'px';
+        container.style.top = fabPos.y + 'px';
+        container.style.right = 'auto';
+        container.style.bottom = 'auto';
+    }
+
+    function getDirection(dx, dy) {
+        // 计算角度（以正上方为0°，顺时针）
+        const angle = Math.atan2(dx, -dy) * 180 / Math.PI;
+        // angle: 上=0, 右=90, 下=±180, 左=-90
+        if (angle >= -45 && angle < 45) return 'up';
+        if (angle >= 45 && angle < 135) return 'right';
+        if (angle >= 135 || angle < -135) return 'down';
+        if (angle >= -135 && angle < -45) return 'left';
+        return null;
+    }
+
+    function showDirection(dir) {
+        if (currentDirection === dir) return;
+        hideDirection();
+        currentDirection = dir;
+        if (dir && DIRECTIONS[dir]) {
+            indicator.textContent = DIRECTIONS[dir].label;
+            indicator.classList.remove('hidden');
+            hints[dir].classList.add('active');
+        }
+    }
+
+    function hideDirection() {
+        currentDirection = null;
+        indicator.classList.add('hidden');
+        Object.values(hints).forEach(h => h.classList.remove('active'));
+    }
+
+    function handleTouchStart(e) {
+        const touch = e.touches[0];
+        startX = touch.clientX;
+        startY = touch.clientY;
+        isLongPress = false;
+        isDragging = false;
+
+        const rect = container.getBoundingClientRect();
+        dragOffsetX = touch.clientX - rect.left;
+        dragOffsetY = touch.clientY - rect.top;
+
+        // 长按检测：300ms 后开始拖拽
+        longPressTimer = setTimeout(() => {
+            isLongPress = true;
+            isDragging = true;
+            fab.classList.add('dragging');
+        }, 300);
+    }
+
+    function handleTouchMove(e) {
+        e.preventDefault();
+        const touch = e.touches[0];
+        const dx = touch.clientX - startX;
+        const dy = touch.clientY - startY;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+
+        if (!isLongPress && dist > 12) {
+            // 移动超过阈值但未触发长按 → 取消长按计时，进入滑动模式
+            clearTimeout(longPressTimer);
+            longPressTimer = null;
+
+            // 如果答题按钮可见，识别滑动方向
+            if (isAnswerVisible()) {
+                if (dist > 20) {
+                    const dir = getDirection(dx, dy);
+                    showDirection(dir);
+                } else {
+                    // 滑回中心附近，隐藏方向提示
+                    hideDirection();
+                }
+            }
+        }
+
+        if (isDragging) {
+            setFabPosition(
+                touch.clientX - dragOffsetX,
+                touch.clientY - dragOffsetY
+            );
+        }
+    }
+
+    function handleTouchEnd(e) {
+        clearTimeout(longPressTimer);
+        longPressTimer = null;
+        fab.classList.remove('dragging');
+
+        const touch = e.changedTouches[0];
+        const dx = touch.clientX - startX;
+        const dy = touch.clientY - startY;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+
+        if (isDragging) {
+            // 长按拖拽结束，仅移动位置
+            isDragging = false;
+            hideDirection();
+            return;
+        }
+
+        // 滑回中心区域（距离 < 30px）→ 取消操作，不触发答题
+        if (currentDirection && dist < 30) {
+            hideDirection();
+            return;
+        }
+
+        if (currentDirection && isAnswerVisible()) {
+            // 滑动方向确认 → 答题
+            const action = DIRECTIONS[currentDirection];
+            hideDirection();
+            if (action) {
+                answerCard(action.ease);
+            }
+            return;
+        }
+
+        hideDirection();
+
+        // 短按（无移动）→ 朗读单词
+        if (dist < 12) {
+            const btn = document.getElementById('tts-word');
+            if (btn && !btn.classList.contains('loading')) {
+                btn.click();
+            }
+        }
+    }
+
+    function isAnswerVisible() {
+        const btns = document.getElementById('answer-buttons');
+        return btns && !btns.classList.contains('hidden');
+    }
+
+    // 鼠标支持（桌面端调试）
+    let mouseDown = false;
+    fab.addEventListener('mousedown', (e) => {
+        mouseDown = true;
+        startX = e.clientX;
+        startY = e.clientY;
+        isLongPress = false;
+        isDragging = false;
+        const rect = container.getBoundingClientRect();
+        dragOffsetX = e.clientX - rect.left;
+        dragOffsetY = e.clientY - rect.top;
+        longPressTimer = setTimeout(() => {
+            isLongPress = true;
+            isDragging = true;
+            fab.classList.add('dragging');
+        }, 300);
+    });
+
+    document.addEventListener('mousemove', (e) => {
+        if (!mouseDown) return;
+        const dx = e.clientX - startX;
+        const dy = e.clientY - startY;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+
+        if (!isLongPress && dist > 12) {
+            clearTimeout(longPressTimer);
+            longPressTimer = null;
+            if (isAnswerVisible()) {
+                if (dist > 20) {
+                    const dir = getDirection(dx, dy);
+                    showDirection(dir);
+                } else {
+                    hideDirection();
+                }
+            }
+        }
+
+        if (isDragging) {
+            setFabPosition(e.clientX - dragOffsetX, e.clientY - dragOffsetY);
+        }
+    });
+
+    document.addEventListener('mouseup', (e) => {
+        if (!mouseDown) return;
+        mouseDown = false;
+        clearTimeout(longPressTimer);
+        longPressTimer = null;
+        fab.classList.remove('dragging');
+
+        const dx = e.clientX - startX;
+        const dy = e.clientY - startY;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+
+        if (isDragging) {
+            isDragging = false;
+            hideDirection();
+            return;
+        }
+
+        // 滑回中心区域（距离 < 30px）→ 取消操作
+        if (currentDirection && dist < 30) {
+            hideDirection();
+            return;
+        }
+
+        if (currentDirection && isAnswerVisible()) {
+            const action = DIRECTIONS[currentDirection];
+            hideDirection();
+            if (action) answerCard(action.ease);
+            return;
+        }
+
+        hideDirection();
+
+        if (dist < 12) {
+            const btn = document.getElementById('tts-word');
+            if (btn && !btn.classList.contains('loading')) btn.click();
+        }
+    });
+
+    // 触摸事件
+    fab.addEventListener('touchstart', handleTouchStart, { passive: true });
+    fab.addEventListener('touchmove', handleTouchMove, { passive: false });
+    fab.addEventListener('touchend', handleTouchEnd);
+
+    // 初始定位
+    setFabPosition(fabPos.x, fabPos.y);
+
+    // 窗口大小变化时调整位置
+    window.addEventListener('resize', () => {
+        setFabPosition(
+            Math.min(fabPos.x, window.innerWidth - 56),
+            Math.min(fabPos.y, window.innerHeight - 56)
+        );
+    });
+})();

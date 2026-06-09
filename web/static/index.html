@@ -40,9 +40,11 @@
             <div id="origin-content" class="card-content"></div>
         </div>
 
-        <!-- 翻转按钮 -->
-        <div id="flip-btn" onclick="showAnswer()">
-            <span>显示答案</span>
+        <!-- 翻转按钮 + 扩大点击区域 -->
+        <div id="flip-area" onclick="showAnswer()">
+            <div id="flip-btn">
+                <span>显示答案</span>
+            </div>
         </div>
 
         <!-- 答题按钮 -->
@@ -93,6 +95,12 @@
         <h2 id="error-title">出错了</h2>
         <p id="error-message"></p>
         <button class="btn-primary" onclick="fetchNextCard()">重试</button>
+    </div>
+
+    <!-- 悬浮操作按钮 -->
+    <div id="fab-container">
+        <div id="fab" class="fab">🔊</div>
+        <div id="fab-indicator" class="fab-indicator hidden"></div>
     </div>
 
     <script src="/static/app.js"></script>

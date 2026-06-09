@@ -251,50 +251,49 @@ async def _handle_card_sentence(request: web.Request) -> web.Response:
 # ── TTS 服务 ──────────────────────────────────────────────────
 
 async def _handle_tts(request: web.Request) -> web.Response:
-    """生成 TTS 音频并返回 MP3。不阻塞事件循环。"""
+    """生成 TTS 音频并返回 MP3。不阻塞事件循环，不阻塞 Qt 主线程。
+
+    关键设计：
+    - edge-tts / custom_url 只涉及网络IO，在后台线程池执行，
+      绝不跑到 Qt 主线程上（stream_sync 是同步阻塞调用，会卡死主线程）。
+    - anki_native / apple_tts 需要主线程播放，但 Web 端只返回音频数据，
+      不涉及本地播放，所以也走后台线程。
+    """
     text = request.match_info["text"]
     if not text:
         return web.json_response({"error": "缺少文本"}, status=400)
 
-    def _generate_tts():
-        from .tts.tts_manager import tts_manager
-        result = tts_manager.generate(text)
-        if result:
-            audio_data, ext = result
-            return audio_data
-        return None
-
-    # 先尝试在主线程生成（部分 TTS 引擎需要），但异步等待，超时不卡死
-    audio_data = None
+    # 始终在后台线程池中生成音频，绝不占用 Qt 主线程
+    loop = asyncio.get_event_loop()
     try:
-        audio_data = await run_on_main_async(request.app["mw"], _generate_tts, timeout=15)
-    except Exception:
-        audio_data = None
+        result = await asyncio.wait_for(
+            loop.run_in_executor(None, _generate_tts_background, text),
+            timeout=30,
+        )
+    except asyncio.TimeoutError:
+        return web.json_response({"error": "TTS 生成超时"}, status=504)
+    except Exception as e:
+        return web.json_response({"error": f"TTS 生成失败: {e}"}, status=500)
 
-    # 如果主线程生成失败或超时，在后台线程重试（edge-tts 不需要主线程）
-    if audio_data is None:
-        loop = asyncio.get_event_loop()
-        try:
-            from .tts.tts_manager import tts_manager
-            audio_data = await asyncio.wait_for(
-                loop.run_in_executor(None, lambda: tts_manager.generate(text)),
-                timeout=30,
-            )
-            if audio_data:
-                audio_data = audio_data[0]
-        except asyncio.TimeoutError:
-            return web.json_response({"error": "TTS 生成超时"}, status=504)
-        except Exception as e:
-            return web.json_response({"error": f"TTS 生成失败: {e}"}, status=500)
-
-    if audio_data is None:
+    if result is None:
         return web.json_response({"error": "TTS 生成失败"}, status=500)
 
+    audio_data = result
     return web.Response(
         body=audio_data,
         content_type="audio/mpeg",
         headers={"Cache-Control": "public, max-age=86400"},
     )
+
+
+def _generate_tts_background(text: str) -> bytes | None:
+    """在后台线程中生成 TTS 音频。返回 audio_bytes 或 None。"""
+    from .tts.tts_manager import tts_manager
+    result = tts_manager.generate(text)
+    if result:
+        audio_data, ext = result
+        return audio_data
+    return None
 
 
 # ── 媒体文件服务 ──────────────────────────────────────────────
