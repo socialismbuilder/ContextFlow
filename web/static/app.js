@@ -24,10 +24,19 @@ async function fetchStatus() {
     }
 }
 
-function updateCounts(newCount, learningCount, reviewCount) {
+function updateCounts(newCount, learningCount, reviewCount, activeType) {
     document.getElementById('count-new').textContent = newCount;
     document.getElementById('count-learning').textContent = learningCount;
     document.getElementById('count-review').textContent = reviewCount;
+
+    // 高亮当前卡片对应的计数标签
+    const types = ['new', 'learning', 'review'];
+    types.forEach(t => {
+        const el = document.getElementById('count-' + t);
+        if (el) {
+            el.classList.toggle('active', t === activeType);
+        }
+    });
 }
 
 // ── 获取下一张卡片 ───────────────────────────────────
@@ -81,7 +90,7 @@ function showQuestion(data) {
 
     // 更新计数
     if (data.counts) {
-        updateCounts(data.counts.new, data.counts.learning, data.counts.review);
+        updateCounts(data.counts.new, data.counts.learning, data.counts.review, data.active_type);
     }
 
     // 更新按钮时间标签
