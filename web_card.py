@@ -10,9 +10,7 @@ import time
 
 # ── Web 端计时器 ──────────────────────────────────────────────
 # 记录每张卡片在 Web 端首次展示的时间戳，用于计算真实学习时间。
-# 桌面端由 reviewer 在 getCard() 时自动 start_timer()，
-# Web 端需要在获取卡片时手动记录，答题时传递给 answerCard()。
-_card_show_times: dict[int, float] = {}  # card_id -> time.time() 时间戳
+_card_show_times: dict[int, float] = {}  # card_id -> time.time()
 
 
 # ── 媒体 URL 重写 ──────────────────────────────────────────────
@@ -167,13 +165,10 @@ def get_next_card(mw) -> dict:
       - {status: "waiting", wait_seconds, learning_remaining}
       - {status: "finished"}
     """
-    # 清除已过期卡片的计时记录
     _card_show_times.clear()
 
     card = mw.col.sched.getCard()
     if card:
-        # getCard() 内部已调用 start_timer()，但我们在 Web 端额外记录
-        # 展示时间戳，以便在 answer_card() 中使用真实学习时间。
         _card_show_times[card.id] = time.time()
         return _render_card_data(mw, card)
 
@@ -241,12 +236,13 @@ def _render_card_data(mw, card) -> dict:
     css = card.render_output().css
     counts = mw.col.sched.counts(card)
 
-    # 判断当前卡片类型：0=new, 1=learning, 2=review, 3=relearning
-    # relearning 归入 learning 类别显示
-    card_type = card.type
-    if card_type == 0:
+    # 判断当前卡片类型用于高亮
+    queue = card.queue
+    if queue == 0:
         active_type = "new"
-    elif card_type in (1, 3):
+    elif queue in (1, 3):
+        active_type = "learning"
+    elif card.type == 3:
         active_type = "learning"
     else:
         active_type = "review"
@@ -307,42 +303,35 @@ def get_answer(mw, card_id: int) -> dict:
 
 def answer_card(mw, card_id: int, ease: int) -> dict:
     """答题并返回下一张卡片数据。"""
-    # 直接通过 card_id 获取卡片，避免再次调用 sched.getCard() 导致计时器重置。
-    # sched.getCard() 内部会调用 start_timer()，会覆盖真实的查看时间。
-    try:
-        card = mw.col.get_card(card_id)
-    except Exception:
-        print(f"[ContextFlow Web] 卡片 {card_id} 获取失败，跳过答题")
+    # 确认卡片在队列顶部
+    top_card = mw.col.sched.getCard()
+    if not top_card or top_card.id != card_id:
+        # 卡片不在队列顶部，可能已被处理，跳过答题直接返回下一张
+        print(f"[ContextFlow Web] 卡片 {card_id} 不在队列顶部，跳过答题")
         return get_next_card(mw)
 
-    if not card:
-        print(f"[ContextFlow Web] 卡片 {card_id} 不存在，跳过答题")
-        return get_next_card(mw)
-
-    # 恢复卡片首次展示时的计时起点，使 time_taken() 返回真实的 Web 学习时间。
-    # get_next_card() 在获取卡片时已记录 _card_show_times。
+    # 计算从获取卡片到答题的真实时间
     show_time = _card_show_times.pop(card_id, None)
     if show_time is not None:
-        card.timer_started = show_time
+        taken_ms = int((time.time() - show_time) * 1000)
     else:
-        # 没有记录（可能是刷新后），用当前时间兜底
-        card.start_timer()
+        taken_ms = 0
 
-    taken_ms = card.time_taken(capped=False)
-    mw.col.sched.answerCard(card, ease)
+    top_card.start_timer()
+    mw.col.sched.answerCard(top_card, ease)
 
-    # Rust 后端对 preview/filtered 队列的卡片可能不写入 time，
-    # 这里通过 SQL 直接修补 revlog 中最新记录的 time 字段。
+    # 修补 revlog 中的 time 字段（Rust 后端对 preview/filtered 可能写入 0）
     if taken_ms > 0:
         try:
             from anki.utils import int_time
             now_ms = int_time(1000)
             mw.col.db.execute(
                 "UPDATE revlog SET time = ? WHERE cid = ? AND id > ?",
-                taken_ms, card_id, now_ms - 60_000,  # 最近 60 秒内的记录
+                taken_ms, card_id, now_ms - 60_000,
             )
         except Exception as e:
             print(f"[ContextFlow Web] revlog time 修补失败: {e}")
+
     return get_next_card(mw)
 
 

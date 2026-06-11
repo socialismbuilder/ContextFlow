@@ -1,6 +1,7 @@
 // ── ContextFlow Web 复习前端 ────────────────────────────
 
 let currentCardId = null;
+let currentActiveType = null;      // 当前卡片类型: new/learning/review
 let waitTimer = null;
 let sentencePollTimer = null;
 let cachedOriginHtml = null;       // 缓存原始卡片背面 HTML
@@ -18,7 +19,7 @@ async function fetchStatus() {
         const resp = await fetch('/api/status');
         const data = await resp.json();
         document.getElementById('deck-name').textContent = data.deck_name || '未知牌组';
-        updateCounts(data.new || 0, data.learning || 0, data.review || 0);
+        updateCounts(data.new || 0, data.learning || 0, data.review || 0, currentActiveType);
     } catch (e) {
         console.error('[ContextFlow] 获取状态失败:', e);
     }
@@ -90,7 +91,8 @@ function showQuestion(data) {
 
     // 更新计数
     if (data.counts) {
-        updateCounts(data.counts.new, data.counts.learning, data.counts.review, data.active_type);
+        currentActiveType = data.active_type || null;
+        updateCounts(data.counts.new, data.counts.learning, data.counts.review, currentActiveType);
     }
 
     // 更新按钮时间标签
