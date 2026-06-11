@@ -21,7 +21,6 @@
 
 html, body {
     height: 100%;
-    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", Roboto, sans-serif;
     background: var(--bg);
     color: var(--text);
     overflow: hidden;
