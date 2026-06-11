@@ -300,21 +300,21 @@ def answer_card(mw, card_id: int, ease: int) -> dict:
     top_card.start_timer()
     mw.col.sched.answerCard(top_card, ease)
 
-    # 计算真实学习时间并打印日志（SQL 修补暂注释，用于排查是否影响队列）
+    # 修补 revlog 中的 time 字段（Rust 后端对 preview/filtered 可能写入 0）
     show_time = _card_show_times.pop(card_id, None)
     if show_time:
         taken_ms = int((time.time() - show_time) * 1000)
         print(f"[ContextFlow Web] card {card_id} taken={taken_ms}ms")
-        # if taken_ms > 0:
-        #     try:
-        #         from anki.utils import int_time
-        #         now_ms = int_time(1000)
-        #         mw.col.db.execute(
-        #             "UPDATE revlog SET time = ? WHERE cid = ? AND id > ?",
-        #             taken_ms, card_id, now_ms - 60_000,
-        #         )
-        #     except Exception as e:
-        #         print(f"[ContextFlow Web] revlog time 修补失败: {e}")
+        if taken_ms > 0:
+            try:
+                from anki.utils import int_time
+                now_ms = int_time(1000)
+                mw.col.db.execute(
+                    "UPDATE revlog SET time = ? WHERE cid = ? AND id > ?",
+                    taken_ms, card_id, now_ms - 60_000,
+                )
+            except Exception as e:
+                print(f"[ContextFlow Web] revlog time 修补失败: {e}")
 
     return get_next_card(mw)
 
