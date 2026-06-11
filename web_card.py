@@ -235,6 +235,18 @@ def _render_card_data(mw, card) -> dict:
 
     css = card.render_output().css
     counts = mw.col.sched.counts(card)
+
+    # 判断当前卡片类型用于高亮
+    queue = card.queue
+    if queue == 0:
+        active_type = "new"
+    elif queue in (1, 3):
+        active_type = "learning"
+    elif card.type == 3:
+        active_type = "learning"
+    else:
+        active_type = "review"
+
     return {
         "status": "card",
         "card_id": card.id,
@@ -243,6 +255,7 @@ def _render_card_data(mw, card) -> dict:
         "origin_html": origin_html,
         "css": css,
         "button_labels": list(labels),
+        "active_type": active_type,
         "counts": {
             "new": counts[0],
             "learning": counts[1],

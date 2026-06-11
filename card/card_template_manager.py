@@ -134,7 +134,7 @@ def _fill_web_template(template: str, sentence: str, translation: str,
         original_area = ""
 
     html = template
-    html = html.replace("{FONT_CSS}", get_font_css())
+    html = html.replace("{FONT_CSS}", "")
     html = html.replace("{SENTENCE}", processed_sentence)
     html = html.replace("{SENTENCE_TEXT}", sentence_text)
     html = html.replace("{WORD_BUTTON}", word_button)

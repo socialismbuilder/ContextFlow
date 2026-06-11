@@ -21,7 +21,6 @@
 
 html, body {
     height: 100%;
-    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", Roboto, sans-serif;
     background: var(--bg);
     color: var(--text);
     overflow: hidden;
@@ -85,6 +84,11 @@ body {
 .count.new { background: rgba(59, 130, 246, 0.25); color: hsl(215, 70%, 72%); }
 .count.learning { background: rgba(245, 158, 11, 0.2); color: hsl(38, 75%, 68%); }
 .count.review { background: rgba(34, 197, 94, 0.2); color: hsl(145, 60%, 68%); }
+
+/* 当前卡片类型高亮 */
+.count.new.active { background: rgba(59, 130, 246, 0.55); color: #fff; }
+.count.learning.active { background: rgba(245, 158, 11, 0.5); color: #fff; }
+.count.review.active { background: rgba(34, 197, 94, 0.5); color: #fff; }
 
 /* ── 卡片区域 ──────────────────────────────────────── */
 #card-area {

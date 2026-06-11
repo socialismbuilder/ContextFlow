@@ -1,6 +1,7 @@
 // ── ContextFlow Web 复习前端 ────────────────────────────
 
 let currentCardId = null;
+let currentActiveType = null;      // 当前卡片类型: new/learning/review
 let waitTimer = null;
 let sentencePollTimer = null;
 let cachedOriginHtml = null;       // 缓存原始卡片背面 HTML
@@ -18,16 +19,25 @@ async function fetchStatus() {
         const resp = await fetch('/api/status');
         const data = await resp.json();
         document.getElementById('deck-name').textContent = data.deck_name || '未知牌组';
-        updateCounts(data.new || 0, data.learning || 0, data.review || 0);
+        updateCounts(data.new || 0, data.learning || 0, data.review || 0, currentActiveType);
     } catch (e) {
         console.error('[ContextFlow] 获取状态失败:', e);
     }
 }
 
-function updateCounts(newCount, learningCount, reviewCount) {
+function updateCounts(newCount, learningCount, reviewCount, activeType) {
     document.getElementById('count-new').textContent = newCount;
     document.getElementById('count-learning').textContent = learningCount;
     document.getElementById('count-review').textContent = reviewCount;
+
+    // 高亮当前卡片对应的计数标签
+    const types = ['new', 'learning', 'review'];
+    types.forEach(t => {
+        const el = document.getElementById('count-' + t);
+        if (el) {
+            el.classList.toggle('active', t === activeType);
+        }
+    });
 }
 
 // ── 获取下一张卡片 ───────────────────────────────────
@@ -81,7 +91,8 @@ function showQuestion(data) {
 
     // 更新计数
     if (data.counts) {
-        updateCounts(data.counts.new, data.counts.learning, data.counts.review);
+        currentActiveType = data.active_type || null;
+        updateCounts(data.counts.new, data.counts.learning, data.counts.review, currentActiveType);
     }
 
     // 更新按钮时间标签
