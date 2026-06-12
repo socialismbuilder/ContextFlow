@@ -79,10 +79,10 @@ class SentenceTaskManager:
             self.processing_keywords.clear()
 
         if self.executor:
-            print("DEBUG: Initiating immediate thread pool shutdown...")
+            print("DEBUG: Initiating thread pool shutdown...")
             self.stop_event.set()
-            self.executor.shutdown(wait=False)
-            print("DEBUG: Thread pool shutdown completed (immediate).")
+            self.executor.shutdown(wait=True)
+            print("DEBUG: Thread pool shutdown completed.")
             self.executor = None
 
         self._manager_thread = None

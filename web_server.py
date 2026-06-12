@@ -50,21 +50,22 @@ def start(mw, port: int = 8765):
 def stop():
     """停止 Web 服务器。"""
     global _runner, _server_thread, _aiohttp_loop
+
     loop = _aiohttp_loop
+    thread = _server_thread
+
+    # 1. 通知事件循环停止
     if loop is not None and loop.is_running():
         loop.call_soon_threadsafe(loop.stop)
-    if _runner is not None:
-        runner = _runner
-        # 在后台清理 runner，不阻塞调用方
-        def _cleanup():
-            try:
-                loop2 = asyncio.new_event_loop()
-                loop2.run_until_complete(runner.cleanup())
-                loop2.close()
-            except Exception:
-                pass
-        threading.Thread(target=_cleanup, daemon=True).start()
-        _runner = None
+
+    # 2. 等待服务器线程真正退出（带超时保护）
+    if thread is not None and thread.is_alive():
+        thread.join(timeout=5)
+        if thread.is_alive():
+            print("[ContextFlow Web] 警告: 服务器线程未在 5 秒内退出")
+
+    # 3. 清理全局引用
+    _runner = None
     _server_thread = None
     _aiohttp_loop = None
     print("[ContextFlow Web] 服务器已停止")
@@ -91,7 +92,9 @@ def _run_server(app: web.Application, port: int):
     except Exception:
         pass
     finally:
-        loop.run_until_complete(_runner.cleanup())
+        if _runner is not None:
+            loop.run_until_complete(_runner.cleanup())
+            _runner = None
         loop.close()
 
 
