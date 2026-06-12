@@ -142,6 +142,8 @@ def _create_app(mw) -> web.Application:
     app.router.add_get("/api/card/show", _handle_card_show)
     app.router.add_post("/api/card/answer", _handle_card_answer)
     app.router.add_get("/api/card/sentence", _handle_card_sentence)
+    app.router.add_get("/api/undo/status", _handle_undo_status)
+    app.router.add_post("/api/undo", _handle_undo)
     app.router.add_get("/api/tts/{text:.*}", _handle_tts)
 
     # 媒体文件
@@ -245,6 +247,26 @@ async def _handle_card_sentence(request: web.Request) -> web.Response:
     data = await run_on_main_async(mw, lambda: web_card.check_sentence_status(mw))
     if data is None:
         return web.json_response({"error": "主线程繁忙，请稍后重试"}, status=503)
+    return web.json_response(data)
+
+
+# ── 撤回 ──────────────────────────────────────────────────
+
+async def _handle_undo_status(request: web.Request) -> web.Response:
+    mw = request.app["mw"]
+    data = await run_on_main_async(mw, lambda: web_card.get_undo_status(mw))
+    if data is None:
+        return web.json_response({"error": "主线程繁忙，请稍后重试"}, status=503)
+    return web.json_response(data)
+
+
+async def _handle_undo(request: web.Request) -> web.Response:
+    mw = request.app["mw"]
+    data = await run_on_main_async(mw, lambda: web_card.undo_card(mw))
+    if data is None:
+        return web.json_response({"error": "主线程繁忙，请稍后重试"}, status=503)
+    if data.get("status") == "card":
+        _session["current_card_id"] = data["card_id"]
     return web.json_response(data)
 
 

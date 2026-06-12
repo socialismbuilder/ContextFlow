@@ -11,6 +11,7 @@ let cachedSentenceBackHtml = null; // 缓存例句+翻译 HTML（背面时替换
 document.addEventListener('DOMContentLoaded', () => {
     fetchStatus();
     fetchNextCard();
+    checkUndoStatus();
 });
 
 // ── 状态 ─────────────────────────────────────────────
@@ -198,10 +199,55 @@ async function answerCard(ease) {
         currentCardId = null;
         fetchStatus();
         handleCardResponse(data);
+        checkUndoStatus();
     } catch (e) {
         showError('答题失败', e.message);
     }
 }
+
+// ── 撤回 ──────────────────────────────────────────────
+async function checkUndoStatus() {
+    try {
+        const resp = await fetch('/api/undo/status');
+        const data = await resp.json();
+        const btn = document.getElementById('undo-btn');
+        if (btn) {
+            btn.classList.toggle('hidden', !data.can_undo);
+        }
+    } catch (e) {
+        console.error('[ContextFlow] 检查撤回状态失败:', e);
+    }
+}
+
+async function undoCard() {
+    showScreen('loading');
+    try {
+        const resp = await fetch('/api/undo', { method: 'POST' });
+        const data = await resp.json();
+        if (data.error) {
+            showError('撤回失败', data.error);
+            return;
+        }
+        currentCardId = data.card_id || null;
+        fetchStatus();
+        handleCardResponse(data);
+        checkUndoStatus();
+    } catch (e) {
+        showError('撤回失败', e.message);
+    }
+}
+
+// 键盘快捷键：u 撤回
+document.addEventListener('keydown', (e) => {
+    if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+    if (e.key === 'u' || e.key === 'U') {
+        e.preventDefault();
+        const btn = document.getElementById('undo-btn');
+        if (btn && !btn.classList.contains('hidden')) {
+            undoCard();
+        }
+    }
+});
 
 // ── 等待界面 ─────────────────────────────────────────
 function showWaiting(seconds, remaining) {

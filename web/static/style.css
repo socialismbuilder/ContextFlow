@@ -339,6 +339,18 @@ body {
 }
 .btn-icon:active { color: var(--text-mid); }
 
+#undo-btn {
+    color: var(--good);
+    opacity: 0.7;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid var(--glass-border);
+    border-radius: 6px;
+    transition: opacity 0.15s, color 0.15s;
+}
+#undo-btn:active { opacity: 1; color: var(--text); }
+
 /* ── 牌组选择 ──────────────────────────────────────── */
 #deck-selector {
     position: fixed;

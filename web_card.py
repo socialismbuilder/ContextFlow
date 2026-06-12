@@ -353,6 +353,29 @@ def select_deck(mw, deck_id: int) -> dict:
     return {"success": True, "deck_name": mw.col.decks.name(deck_id)}
 
 
+def get_undo_status(mw) -> dict:
+    """获取撤回状态。"""
+    status = mw.col.undo_status()
+    return {"can_undo": bool(status.undo), "undo_name": status.undo or ""}
+
+
+def undo_card(mw) -> dict:
+    """撤回上一次答题操作，返回下一张卡片数据。"""
+    from anki.errors import UndoEmpty
+
+    status = mw.col.undo_status()
+    if not status.undo:
+        return {"status": "error", "error": "没有可撤回的操作"}
+
+    try:
+        mw.col.undo()
+        return get_next_card(mw)
+    except UndoEmpty:
+        return {"status": "error", "error": "没有可撤回的操作"}
+    except Exception as e:
+        return {"status": "error", "error": str(e)}
+
+
 def get_status(mw) -> dict:
     """获取当前状态信息。"""
     deck_id = mw.col.decks.selected()
