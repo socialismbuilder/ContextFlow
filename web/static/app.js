@@ -401,10 +401,10 @@ async function pollSentence() {
     // 方向定义：角度 → 操作
     // 以正上方为0°，顺时针：上→简单，右→困难，下→重来，左→良好
     const DIRECTIONS = {
-        up:    { label: '良好', icon: '🙂', ease: 3, cls: 'hint-up' },
-        right: { label: '简单', icon: '😊', ease: 4, cls: 'hint-right' },
-        down:  { label: '重来', icon: '😣', ease: 1, cls: 'hint-down' },
-        left:  { label: '困难', icon: '😐', ease: 2, cls: 'hint-left' },
+        up:    { label: '良好', ease: 3, cls: 'hint-up' },
+        right: { label: '简单', ease: 4, cls: 'hint-right' },
+        down:  { label: '重来', ease: 1, cls: 'hint-down' },
+        left:  { label: '困难', ease: 2, cls: 'hint-left' },
     };
 
     // 保存位置
@@ -416,15 +416,10 @@ async function pollSentence() {
     let dragOffsetX = 0, dragOffsetY = 0;
     let currentDirection = null;
 
-    // 创建方向提示元素
-    const hints = {};
-    Object.keys(DIRECTIONS).forEach(dir => {
-        const el = document.createElement('div');
-        el.className = 'fab-direction-hint ' + DIRECTIONS[dir].cls;
-        el.textContent = DIRECTIONS[dir].icon;
-        container.appendChild(el);
-        hints[dir] = el;
-    });
+    // 获取答题按钮的 SVG 图标用于滑动替换
+    const btnSvgs = document.querySelectorAll('#answer-buttons .answer-btn svg');
+    // down=重来(btn 0), left=困难(btn 1), up=良好(btn 2), right=简单(btn 3)
+    const dirToBtnIdx = { down: 0, left: 1, up: 2, right: 3 };
 
     function setFabPosition(x, y) {
         const maxX = window.innerWidth - 56;
@@ -448,21 +443,24 @@ async function pollSentence() {
         return null;
     }
 
+    // 保存音量 SVG 用于恢复
+    const volumeSvg = fab.innerHTML;
+
     function showDirection(dir) {
         if (currentDirection === dir) return;
         hideDirection();
         currentDirection = dir;
-        if (dir && DIRECTIONS[dir]) {
+        if (dir && DIRECTIONS[dir] && btnSvgs[dirToBtnIdx[dir]]) {
+            fab.innerHTML = btnSvgs[dirToBtnIdx[dir]].outerHTML;
             indicator.textContent = DIRECTIONS[dir].label;
             indicator.classList.remove('hidden');
-            hints[dir].classList.add('active');
         }
     }
 
     function hideDirection() {
         currentDirection = null;
+        fab.innerHTML = volumeSvg;
         indicator.classList.add('hidden');
-        Object.values(hints).forEach(h => h.classList.remove('active'));
     }
 
     function handleTouchStart(e) {
