@@ -108,5 +108,7 @@
     "tts_custom_url": "",
     "tts_replace_audio": false,
     "web_port": 8765,
-    "web_enabled": true
+    "web_enabled": true,
+    "second_keywords_enabled": true,
+    "second_keywords_top_n": 100
 }

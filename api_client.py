@@ -113,16 +113,22 @@ class AISentenceGenerator:
 
     def format_prompt(self, config, keyword, prompt=None):
         """构建格式化后的提示词字符串"""
-        if not self._top_difficulty_keywords:
-            self._top_difficulty_keywords = self.get_top_difficulty_keywords()
+        config_second_kw_enabled = config.get("second_keywords_enabled", True)
+        config_second_kw_top_n = config.get("second_keywords_top_n", 100)
 
-        if not self._top_difficulty_keywords or len(self._top_difficulty_keywords) < 100:
-            second_keywords_str = ""
+        if config_second_kw_enabled:
+            if not self._top_difficulty_keywords:
+                self._top_difficulty_keywords = self.get_top_difficulty_keywords()
+
+            if not self._top_difficulty_keywords or len(self._top_difficulty_keywords) < config_second_kw_top_n:
+                second_keywords_str = ""
+            else:
+                second_keywords = random.sample(self._top_difficulty_keywords, 10) if len(
+                    self._top_difficulty_keywords) >= 10 else self._top_difficulty_keywords
+                second_keywords_str = ", ".join(second_keywords)
+                second_keywords_str = "- 在保证句子流畅的前提下，可以在每个例句中尝试融入若干以下词汇(" + second_keywords_str + ")，不限制每句融入几个，不得强制融入牺牲流传性，0-3个为佳，必须以句子自然流畅为前提。"
         else:
-            second_keywords = random.sample(self._top_difficulty_keywords, 10) if len(
-                self._top_difficulty_keywords) >= 10 else self._top_difficulty_keywords
-            second_keywords_str = ", ".join(second_keywords)
-            second_keywords_str = "- 在保证句子流畅的前提下，可以在每个例句中尝试融入若干以下词汇(" + second_keywords_str + ")，不限制每句融入几个，不得强制融入牺牲流传性，0-3个为佳，必须以句子自然流畅为前提。"
+            second_keywords_str = ""
 
         vocab_level = config.get("vocab_level", self.DEFAULT_CONFIG["vocab_level"])
         learning_goal = config.get("learning_goal", self.DEFAULT_CONFIG["learning_goal"])
@@ -274,7 +280,7 @@ class AISentenceGenerator:
     # --- 难度关键词 ---
 
     def get_top_difficulty_keywords(self):
-        """返回学过的单词中难度排名前100的关键词列表"""
+        """返回学过的单词中难度排名前N的关键词列表，N由配置决定"""
         config = get_config()
         try:
             deck_name = config.get("deck_name")
@@ -307,12 +313,17 @@ class AISentenceGenerator:
                     continue
 
             difficulty_keywords.sort(reverse=True, key=lambda x: x[0])
-            top_keywords = [kw for (diff, kw) in difficulty_keywords[:100]]
+            top_n = config.get("second_keywords_top_n", 100)
+            top_keywords = [kw for (diff, kw) in difficulty_keywords[:top_n]]
             return top_keywords
 
         except Exception as e:
             print(f"ERROR: 获取难度排名关键词失败: {str(e)}")
             return []
+
+    def clear_cache(self):
+        """清除第二关键词缓存，使配置变更立即生效"""
+        self._top_difficulty_keywords = []
 
     # --- 模型列表 ---
 

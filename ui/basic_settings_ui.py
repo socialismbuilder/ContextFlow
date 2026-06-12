@@ -155,6 +155,31 @@ def add_Preferences_setting(parent_dialog, basic_layout, current_config):
     parent_dialog.length_combo.currentIndexChanged.connect(lambda: _handle_custom_change(parent_dialog, parent_dialog.length_combo, 'length_custom', _get_form_layout(parent_dialog.length_combo)))
     _toggle_custom_widget(parent_dialog.length_combo, parent_dialog.length_custom, _get_form_layout(parent_dialog.length_combo))
 
+    # ── 第二关键词设置 ──
+    parent_dialog.second_keywords_enabled = QCheckBox("启用")
+    parent_dialog.second_keywords_enabled.setChecked(
+        current_config.get("second_keywords_enabled", True)
+    )
+
+    parent_dialog.second_keywords_top_n = QSpinBox()
+    parent_dialog.second_keywords_top_n.setRange(30, 3000)
+    parent_dialog.second_keywords_top_n.setValue(
+        current_config.get("second_keywords_top_n", 100)
+    )
+
+    second_kw_row = QWidget()
+    second_kw_row_layout = QHBoxLayout(second_kw_row)
+    second_kw_row_layout.setContentsMargins(0, 0, 0, 0)
+    second_kw_row_layout.addWidget(parent_dialog.second_keywords_enabled, 1)
+    second_kw_row_layout.addWidget(QLabel("候选词池 Top N:"))
+    second_kw_row_layout.addWidget(parent_dialog.second_keywords_top_n, 1)
+    prefs_layout.addRow("第二关键词:", second_kw_row)
+
+    def _on_second_keywords_enabled_changed(checked):
+        parent_dialog.second_keywords_top_n.setEnabled(checked)
+    parent_dialog.second_keywords_enabled.toggled.connect(_on_second_keywords_enabled_changed)
+    _on_second_keywords_enabled_changed(parent_dialog.second_keywords_enabled.isChecked())
+
     prefs_group.setLayout(prefs_layout)
     basic_layout.addWidget(prefs_group)
 
@@ -586,6 +611,8 @@ def save_basic_settings(parent_dialog):
         "tts_replace_audio": parent_dialog.tts_replace_audio.isChecked(),
         "web_enabled": parent_dialog.web_enabled.isChecked(),
         "web_port": parent_dialog.web_port.value(),
+        "second_keywords_enabled": parent_dialog.second_keywords_enabled.isChecked(),
+        "second_keywords_top_n": parent_dialog.second_keywords_top_n.value(),
     }
 
     current_full_config = get_config()
@@ -602,6 +629,10 @@ def save_basic_settings(parent_dialog):
     new_config[f"edge_tts_voice_{current_lang}"] = voice_shortname
 
     save_config(new_config)
+
+    # 清除第二关键词缓存，使新配置立即生效
+    if hasattr(api_client, '_generator') and api_client._generator:
+        api_client._generator.clear_cache()
     
     # 保存配置后更新卡片模板
     _update_card_templates_with_notification(parent_dialog)
