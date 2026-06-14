@@ -81,8 +81,11 @@ class SentenceTaskManager:
         if self.executor:
             print("DEBUG: Initiating thread pool shutdown...")
             self.stop_event.set()
-            self.executor.shutdown(wait=True)
-            print("DEBUG: Thread pool shutdown completed.")
+            # wait=False 避免退出时长时间等待。worker 最多在
+            # generate_ai_sentence 的网络超时（约 30s）后返回；
+            # 这些 worker 是 daemon 线程，进程退出时会被强制回收。
+            self.executor.shutdown(wait=False)
+            print("DEBUG: Thread pool shutdown initiated.")
             self.executor = None
 
         self._manager_thread = None

@@ -93,9 +93,24 @@ def _run_server(app: web.Application, port: int):
         pass
     finally:
         if _runner is not None:
-            loop.run_until_complete(_runner.cleanup())
+            try:
+                loop.run_until_complete(_runner.cleanup())
+            except Exception:
+                pass
             _runner = None
-        loop.close()
+        # 关闭事件循环的默认 executor（run_in_executor(None,...) 用的就是它）。
+        # TTS 等后台任务可能在其 worker 线程中阻塞，shutdown(wait=False) 通知它们
+        # 不再接受新任务；配合 tts_manager 内部的总超时，线程最终会退出。
+        try:
+            ex = loop._default_executor
+            if ex is not None:
+                ex.shutdown(wait=False)
+        except Exception:
+            pass
+        try:
+            loop.close()
+        except Exception:
+            pass
 
 
 # ── 异步线程安全桥接 ──────────────────────────────────────────

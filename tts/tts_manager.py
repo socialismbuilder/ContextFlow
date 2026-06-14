@@ -116,13 +116,22 @@ def _fetch_voice_list() -> list[dict]:
     Must be called from a background thread (creates its own event loop)."""
     import asyncio
     import edge_tts
+    loop = None
     try:
         loop = asyncio.new_event_loop()
         try:
-            voices = loop.run_until_complete(edge_tts.list_voices())
+            voices = loop.run_until_complete(
+                asyncio.wait_for(edge_tts.list_voices(), timeout=20)
+            )
             return voices
         finally:
-            loop.close()
+            try:
+                loop.close()
+            except Exception:
+                pass
+    except asyncio.TimeoutError:
+        print("WARNING: Fetching Edge TTS voice list timed out")
+        return []
     except Exception as e:
         print(f"WARNING: Failed to fetch Edge TTS voice list: {e}")
         return []
@@ -278,23 +287,73 @@ class TTSManager:
         return None
 
     def _generate_edge_tts(self, text: str, cache_key: str):
-        """Generate audio with edge-tts. Returns (bytes, ext) or None."""
+        """Generate audio with edge-tts. Returns (bytes, ext) or None.
+
+        关键：edge-tts 的同步接口 stream_sync() 内部用一个无超时的
+        ThreadPoolExecutor 运行事件循环。若微软服务器长时间无响应
+        （WebSocket keep-alive 挂起），worker 线程会永久阻塞，
+        进程退出时无法结束。这里改为独立线程 + 总超时 + 强制关闭事件循环，
+        保证线程一定能在超时后返回。
+        """
+        import asyncio
         import edge_tts
 
         config = get_config()
         language = config.get("learning_language", "英语")
         voice = _get_voice_for_language(language)
 
-        communicate = edge_tts.Communicate(text, voice)
-        chunks = bytearray()
-        for chunk in communicate.stream_sync():
-            if chunk["type"] == "audio":
-                chunks.extend(chunk["data"])
+        # edge-tts 单次生成的总超时（秒）。正常一句话几秒即可完成。
+        timeout = 30
 
-        if not chunks:
+        async def _collect():
+            communicate = edge_tts.Communicate(text, voice)
+            chunks = bytearray()
+            async for chunk in communicate.stream():
+                if chunk["type"] == "audio":
+                    chunks.extend(chunk["data"])
+            return bytes(chunks)
+
+        result_box = {}
+
+        def _runner():
+            loop = None
+            try:
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+                audio = loop.run_until_complete(
+                    asyncio.wait_for(_collect(), timeout=timeout)
+                )
+                result_box["audio"] = audio
+            except asyncio.TimeoutError:
+                print(f"WARNING: edge-tts 生成超时 ({timeout}s)，已取消")
+            except Exception as e:
+                print(f"WARNING: edge-tts 生成失败: {e}")
+            finally:
+                # 强制关闭事件循环：会取消所有未完成的任务（包括挂起的 WebSocket），
+                # 并等待它们真正退出，避免线程永久阻塞。
+                if loop is not None:
+                    try:
+                        loop.run_until_complete(loop.shutdown_asyncgens())
+                    except Exception:
+                        pass
+                    try:
+                        loop.close()
+                    except Exception:
+                        pass
+
+        # 用独立线程跑事件循环，方便在超时后彻底释放
+        t = threading.Thread(target=_runner, daemon=True)
+        t.start()
+        t.join(timeout=timeout + 10)  # 给清理留余量
+
+        if t.is_alive():
+            # 极端情况：连清理都没在时限内完成。线程为 daemon，Python 退出时会被强制回收。
+            print("WARNING: edge-tts 生成线程未能在时限内退出（daemon 化）")
+
+        audio_data = result_box.get("audio")
+        if not audio_data:
             return None
 
-        audio_data = bytes(chunks)
         self._cache[cache_key] = (audio_data, ".mp3")
         return (audio_data, ".mp3")
 

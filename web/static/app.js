@@ -416,6 +416,17 @@ async function pollSentence() {
     let dragOffsetX = 0, dragOffsetY = 0;
     let currentDirection = null;
 
+    // 双击进入拖动：快速点击两下后，下一次按下直接进入拖动
+    let dragArmed = false;       // 是否已"装填"拖动（双击后置真，真正拖动后消耗）
+    let lastTapTime = 0;         // 上一次轻触时间戳
+    let lastTapX = 0, lastTapY = 0;
+    let speakTimer = null;       // 单击朗读的延迟确认（等待是否双击）
+    let dragArmTimer = null;     // 装填后的失效计时（1s 内未拖动则撤销）
+    const DBL_TAP_GAP = 180;     // 双击最大间隔（ms）
+    const DBL_TAP_MOVE = 30;     // 双击允许的位移（px）
+    const SPEAK_DELAY = 200;     // 单击朗读延迟（须 > DBL_TAP_GAP，确保双击能取消朗读）
+    const DRAG_ARM_TTL = 1000;   // 装填有效时长（ms）
+
     // 获取答题按钮的 SVG 图标用于滑动替换
     const btnSvgs = document.querySelectorAll('#answer-buttons .answer-btn svg');
     // down=重来(btn 0), left=困难(btn 1), up=良好(btn 2), right=简单(btn 3)
@@ -474,6 +485,16 @@ async function pollSentence() {
         dragOffsetX = touch.clientX - rect.left;
         dragOffsetY = touch.clientY - rect.top;
 
+        // 双击已"装填"→ 本次按下直接进入拖动（消耗标志，不启长按计时）
+        if (dragArmed) {
+            dragArmed = false;
+            fab.classList.remove('armed');
+            if (dragArmTimer) { clearTimeout(dragArmTimer); dragArmTimer = null; }
+            isDragging = true;
+            fab.classList.add('dragging');
+            return;
+        }
+
         // 长按检测：300ms 后开始拖拽
         longPressTimer = setTimeout(() => {
             isLongPress = true;
@@ -515,6 +536,8 @@ async function pollSentence() {
     }
 
     function handleTouchEnd(e) {
+        // 阻止浏览器在 touchend 后合成原生 click 事件（避免穿透到下层 tts-word 按钮触发朗读）
+        e.preventDefault();
         clearTimeout(longPressTimer);
         longPressTimer = null;
         fab.classList.remove('dragging');
@@ -525,15 +548,17 @@ async function pollSentence() {
         const dist = Math.sqrt(dx * dx + dy * dy);
 
         if (isDragging) {
-            // 长按拖拽结束，仅移动位置
+            // 拖拽结束，仅移动位置
             isDragging = false;
             hideDirection();
+            lastTapTime = 0; // 拖动后重置，避免与后续轻触误判双击
             return;
         }
 
         // 滑回中心区域（距离 < 30px）→ 取消操作，不触发答题
         if (currentDirection && dist < 30) {
             hideDirection();
+            lastTapTime = 0;
             return;
         }
 
@@ -541,6 +566,7 @@ async function pollSentence() {
             // 滑动方向确认 → 答题
             const action = DIRECTIONS[currentDirection];
             hideDirection();
+            lastTapTime = 0;
             if (action) {
                 answerCard(action.ease);
             }
@@ -549,12 +575,43 @@ async function pollSentence() {
 
         hideDirection();
 
-        // 短按（无移动）→ 朗读单词
+        // 纯轻触（无移动）→ 单击/双击判定
         if (dist < 12) {
-            const btn = document.getElementById('tts-word');
-            if (btn && !btn.classList.contains('loading')) {
-                btn.click();
+            const now = Date.now();
+            const gap = now - lastTapTime;
+            const movedFromLast = Math.hypot(touch.clientX - lastTapX, touch.clientY - lastTapY);
+            const isSecondTap = gap < DBL_TAP_GAP && movedFromLast < DBL_TAP_MOVE && lastTapTime > 0;
+
+            // 任何轻触都先清掉挂起的延迟朗读（重置式：只保留"最后一次点击"的朗读意图）
+            if (speakTimer) { clearTimeout(speakTimer); speakTimer = null; }
+
+            if (isSecondTap) {
+                // 构成双击 → 不再挂朗读，装填拖动
+                lastTapTime = 0;
+                dragArmed = true;
+                fab.classList.add('armed'); // 装填态放大提示，与拖动样式一致
+                // 1s 内未拖动则撤销装填
+                if (dragArmTimer) clearTimeout(dragArmTimer);
+                dragArmTimer = setTimeout(() => {
+                    dragArmed = false;
+                    dragArmTimer = null;
+                    fab.classList.remove('armed');
+                }, DRAG_ARM_TTL);
+                return;
             }
+
+            // 单击 → 记录 tap，延迟朗读；300ms 内再来一次则被上面清掉、转双击
+            lastTapTime = now;
+            lastTapX = touch.clientX;
+            lastTapY = touch.clientY;
+            speakTimer = setTimeout(() => {
+                speakTimer = null;
+                lastTapTime = 0; // 朗读确认，重置以等待下一次双击
+                const btn = document.getElementById('tts-word');
+                if (btn && !btn.classList.contains('loading')) {
+                    btn.click();
+                }
+            }, SPEAK_DELAY);
         }
     }
 
@@ -647,6 +704,8 @@ async function pollSentence() {
     fab.addEventListener('touchstart', handleTouchStart, { passive: true });
     fab.addEventListener('touchmove', handleTouchMove, { passive: false });
     fab.addEventListener('touchend', handleTouchEnd);
+    // 兜底：吞掉 touchend 后浏览器合成的原生 click（穿透会触发下层 tts-word 朗读）
+    fab.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); });
 
     // 初始定位
     setFabPosition(fabPos.x, fabPos.y);
