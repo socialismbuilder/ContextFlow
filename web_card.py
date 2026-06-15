@@ -250,6 +250,7 @@ def _render_card_data(mw, card) -> dict:
     return {
         "status": "card",
         "card_id": card.id,
+        "is_target": is_target,
         "question_html": question_html,
         "sentence_back_html": sentence_back_html,
         "origin_html": origin_html,
@@ -319,6 +320,43 @@ def answer_card(mw, card_id: int, ease: int) -> dict:
 
     mw.col.sched.answerCard(top_card, ease)
     return get_next_card(mw)
+
+
+# ── 重新生成例句 ──────────────────────────────────────────────
+
+def refresh_sentence(mw) -> dict:
+    """
+    重新生成当前卡片的例句（与桌面端 on_card_render 逻辑一致）：
+      - 从缓存取下一条（pop_cache），命中则直接显示；
+      - 未命中则重新入队生成，显示"例句生成中..."，前端轮询；
+      - 重置卡片展示时间（重新计时）。
+    """
+    from .config_manager import get_config
+
+    card = mw.col.sched.getCard()
+    if not card:
+        return {"status": "error", "error": "没有当前卡片"}
+
+    config = get_config()
+    config_deck_name = config.get("deck_name")
+    field_index_match = re.search(r'\[(\d+)\]$', config_deck_name)
+    base_deck_name = re.sub(r'\[\d+\]$', '', config_deck_name) if field_index_match else config_deck_name
+    current_deck = mw.col.decks.name(card.did)
+
+    if not _is_target_deck(card, current_deck, base_deck_name):
+        return {"status": "error", "error": "当前卡片不属于例句牌组"}
+
+    keyword = _extract_keyword(card, field_index_match)
+    if not keyword:
+        return {"status": "error", "error": "无法提取关键词"}
+
+    # 重置展示时间，让答题时 time_taken() 从刷新时刻重新计时
+    _card_show_times[card.id] = time.time()
+
+    # 重新渲染问题面：pop_cache 命中则直接显示，未命中则入队生成并显示"例句生成中..."
+    # _render_web_question 会同步更新 main_logic.showing_* 状态，
+    # _render_card_data 据此生成 sentence_back_html
+    return _render_card_data(mw, card)
 
 
 # ── 牌组操作 ──────────────────────────────────────────────────
@@ -393,12 +431,11 @@ def get_status(mw) -> dict:
 def check_sentence_status(mw) -> dict:
     """
     检查当前卡片的例句是否已生成。
-    用于手机端轮询：如果例句已就绪，返回新的问题面 HTML。
+    用于手机端轮询：如果例句已就绪，返回新的问题面 HTML 和背面 HTML。
     """
     from . import main_logic
     from .cache.cache_manager import load_cache, pop_cache
-    from .card.card_template_manager import get_processed_front_html
-    from .config_manager import get_config
+    from .card.card_template_manager import get_web_front_html, get_web_back_html
 
     keyword = main_logic.showing_keyword
     current_sentence = main_logic.showing_sentence
@@ -412,7 +449,8 @@ def check_sentence_status(mw) -> dict:
     if not cached:
         return {"ready": False}
 
-    # 例句已就绪，生成新的 HTML
+    # 例句已就绪：取出并直接渲染（不再调用 _render_web_question，避免二次 pop_cache
+    # 把刚取出的例句丢弃、或在缓存恰好用尽时回退成"例句生成中..."）
     popped_pair = pop_cache(keyword)
     if popped_pair:
         sentence, translation = popped_pair
@@ -422,15 +460,14 @@ def check_sentence_status(mw) -> dict:
         if not load_cache(keyword):
             main_logic._task_manager.reorganize_queue(keyword, is_repopulate=True)
 
-        # 需要重新获取当前卡片来渲染
-        card = mw.col.sched.getCard()
-        if card:
-            raw_question = card.question()
-            # 直接渲染带例句的问题面（这次会命中缓存）
-            question_html = _render_web_question(card, raw_question)
-            return {
-                "ready": True,
-                "question_html": question_html,
-            }
+        question_html = rewrite_media_urls(get_web_front_html(sentence, keyword))
+        sentence_back_html = rewrite_media_urls(
+            get_web_back_html(sentence, translation, "", keyword)
+        )
+        return {
+            "ready": True,
+            "question_html": question_html,
+            "sentence_back_html": sentence_back_html,
+        }
 
     return {"ready": False}

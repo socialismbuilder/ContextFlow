@@ -2,6 +2,7 @@
 
 let currentCardId = null;
 let currentActiveType = null;      // 当前卡片类型: new/learning/review
+let currentIsTarget = false;       // 当前卡片是否为目标（例句）牌组
 let waitTimer = null;
 let sentencePollTimer = null;
 let cachedOriginHtml = null;       // 缓存原始卡片背面 HTML
@@ -79,7 +80,10 @@ function handleCardResponse(data) {
 function showQuestion(data) {
     hideAllScreens();
 
-    const isTarget = !!data.sentence_back_html;
+    // 是否目标牌组由后端明确给出（不能依赖 sentence_back_html，
+    // 否则例句仍在生成时 sentence_back_html 为空，会被误判为非目标牌组，
+    // 导致 contextflow-side 被隐藏，轮询拿到例句后也看不到）
+    currentIsTarget = !!data.is_target;
 
     // 例句+隐藏条 → contextflow-content
     document.getElementById('contextflow-content').innerHTML = data.question_html || '';
@@ -88,7 +92,7 @@ function showQuestion(data) {
 
     // 缓存背面数据，翻面时不再请求后端
     cachedOriginHtml = data.origin_html || null;
-    cachedSentenceBackHtml = isTarget ? (data.sentence_back_html || null) : null;
+    cachedSentenceBackHtml = currentIsTarget ? (data.sentence_back_html || null) : null;
 
     // 更新计数
     if (data.counts) {
@@ -104,7 +108,7 @@ function showQuestion(data) {
         }
     }
 
-    if (isTarget) {
+    if (currentIsTarget) {
         // 目标牌组：显示例句区，隐藏原始卡片区
         document.getElementById('contextflow-side').classList.remove('hidden');
         document.getElementById('origin-side').classList.add('hidden');
@@ -119,10 +123,12 @@ function showQuestion(data) {
     document.getElementById('flip-area').classList.remove('hidden');
     document.getElementById('card-area').classList.remove('hidden');
 
+    // 刷新按钮由例句模板渲染，只在目标牌组的例句区出现，无需手动显隐
+
     playAutoAudio();
 
     // 自动点击朗读单词按钮（仅目标牌组）
-    if (isTarget) {
+    if (currentIsTarget) {
         setTimeout(() => {
             const btn = document.getElementById('tts-word');
             if (btn && !btn.classList.contains('loading')) { btn.click(); }
@@ -141,7 +147,9 @@ function showQuestion(data) {
 async function showAnswer() {
     if (!currentCardId) return;
 
-    const isTarget = !!cachedSentenceBackHtml;
+    // 用加载时记录的标志，而不是 cachedSentenceBackHtml
+    // （例句由轮询补上时 cachedSentenceBackHtml 之前是空的，会导致翻面时误判为非目标牌组）
+    const isTarget = currentIsTarget;
 
     document.getElementById('flip-btn').classList.add('hidden');
     document.getElementById('flip-area').classList.add('hidden');
@@ -384,9 +392,40 @@ async function pollSentence() {
         if (data.ready && data.question_html) {
             stopSentencePolling();
             document.getElementById('contextflow-content').innerHTML = data.question_html;
+            // 缓存背面 HTML，翻面时直接使用（否则轮询补上的例句在翻面时会缺失翻译）
+            if (data.sentence_back_html) {
+                cachedSentenceBackHtml = data.sentence_back_html;
+            }
         }
     } catch (e) {
         console.error('[ContextFlow] sentence poll error:', e);
+    }
+}
+
+// ── 重新生成例句（刷新）─────────────────────────────────
+async function refreshSentence() {
+    if (!currentCardId) return;
+    stopSentencePolling();
+    const startBtn = document.getElementById('refresh-btn');
+    if (startBtn) startBtn.classList.add('spinning');
+    try {
+        const resp = await fetch('/api/card/refresh_sentence', { method: 'POST' });
+        const data = await resp.json();
+        if (data.error) {
+            showError('刷新失败', data.error);
+            return;
+        }
+        // 重新渲染当前卡片（可能命中缓存直接换句，也可能显示"例句生成中..."并启动轮询）
+        // 渲染会替换 #refresh-btn 节点，所以旋转态在新节点上重新设置后由动画/轮询自然结束
+        handleCardResponse(data);
+    } catch (e) {
+        showError('刷新失败', e.message);
+    } finally {
+        // 渲染后重新查找按钮，确保 spin 类在最新节点上移除
+        setTimeout(() => {
+            const b = document.getElementById('refresh-btn');
+            if (b) b.classList.remove('spinning');
+        }, 800);
     }
 }
 

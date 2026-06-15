@@ -37,9 +37,22 @@
 }
 .tts-btn-group {
     display: flex;
+    align-items: center;
     gap: 4px;
     margin-top: 6px;
     justify-content: flex-end;
+}
+.tts-btn-group .tts-right {
+    display: flex;
+    gap: 4px;
+    margin-left: auto;
+}
+.refresh-btn svg {
+    display: block;
+    font-size: 11px;
+}
+.refresh-btn.spinning svg {
+    animation: cf-spin 0.7s linear infinite;
 }
 .tts-btn {
     display: inline-flex;
@@ -87,8 +100,11 @@
 <div class="card-text" style="line-height: 1.4; opacity: 0.85; font-size: 14px;">{TRANSLATION}</div>
 
 <div class="tts-btn-group">
-    {WORD_BUTTON}
-    <div class="tts-btn" id="tts-sentence" onclick="this.classList.add('loading');playTTS('{SENTENCE_TEXT}')"><span class="tts-label">朗读例句</span></div>
+    {REFRESH_BUTTON}
+    <div class="tts-right">
+        {WORD_BUTTON}
+        <div class="tts-btn" id="tts-sentence" onclick="this.classList.add('loading');playTTS('{SENTENCE_TEXT}')"><span class="tts-label">朗读例句</span></div>
+    </div>
 </div>
 
 {ORIGINAL_CARD_AREA}
