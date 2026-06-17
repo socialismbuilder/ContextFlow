@@ -75,6 +75,11 @@ def _run_server(app: web.Application, port: int):
     """在后台线程中运行 aiohttp 服务器。"""
     global _runner, _aiohttp_loop
     import asyncio
+    import logging
+
+    # 关闭 aiohttp 的逐请求访问日志（每次 GET/POST 都打一行带时间戳的日志，太吵）。
+    # 设到 WARNING：保留真正的错误/警告，屏蔽 INFO 级的访问记录。
+    logging.getLogger("aiohttp.access").setLevel(logging.WARNING)
 
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)

@@ -221,6 +221,7 @@ body {
 #answer-buttons {
     display: flex;
     flex-shrink: 0;
+    margin-top: auto; /* 背面时把答题按钮推到最下方，上方留白填充（不拉伸内容区） */
     padding-bottom: var(--safe-bottom);
 }
 

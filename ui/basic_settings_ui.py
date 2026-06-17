@@ -629,10 +629,6 @@ def save_basic_settings(parent_dialog):
     new_config[f"edge_tts_voice_{current_lang}"] = voice_shortname
 
     save_config(new_config)
-
-    # 清除第二关键词缓存，使新配置立即生效
-    if hasattr(api_client, '_generator') and api_client._generator:
-        api_client._generator.clear_cache()
     
     # 保存配置后更新卡片模板
     _update_card_templates_with_notification(parent_dialog)

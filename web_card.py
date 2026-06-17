@@ -157,6 +157,66 @@ def _render_web_answer(card, original_answer_html):
 
 # ── 卡片获取 ──────────────────────────────────────────────────
 
+def _kind_to_active_type(nkind) -> str:
+    """将 SchedulingState.Normal 的 oneof kind 映射为高亮类型。"""
+    if nkind == "new":
+        return "new"
+    if nkind == "learning":
+        return "learning"
+    # review / relearning(lapsed review) / None → review
+    return "review"
+
+
+def _active_type_from_states(mw, states, card) -> str:
+    """
+    推断当前卡片的高亮类型（new/learning/review），与 Anki 顶部
+    new/learning/review 计数归类保持一致——这样高亮标签和答题后
+    减少的计数值落在同一栏。
+
+    不能直接用 card.queue / card.type：
+      - 自定义学习（过滤牌组）会把卡借出，其 card.queue 被改写为 4（preview），
+        原本的"学习中"信息从 card 对象上丢失；
+      - card.type 是卡片身份（new/learning/review/relearning），不能反映
+        "当前是否处在学习步进"，普通到期复习卡 type 也是 2。
+    因此改用调度器 get_queued_cards() 里这张卡的 queue 枚举
+    （NEW=0 / LEARNING=1 / REVIEW=2）——这是 Anki 自己累加顶部计数用的归类，
+    过滤牌组下也准确。
+
+    回退链：queued 枚举 → states.current（rescheduling 的 original_state）→ card.queue。
+    """
+    # 主路径：调度器队列归类
+    try:
+        for q in mw.col.sched.get_queued_cards().cards:
+            if q.card.id == card.id:
+                # NEW=0, LEARNING=1, REVIEW=2
+                if q.queue == 0:
+                    return "new"
+                if q.queue == 1:
+                    return "learning"
+                return "review"
+    except Exception as e:
+        print(f"[ContextFlow Web] get_queued_cards 查询失败: {e}")
+
+    # 回退 1：rescheduling 过滤牌组用原始调度类型
+    try:
+        cur = states.current
+        if cur.WhichOneof("kind") == "filtered":
+            filt = cur.filtered
+            if filt.WhichOneof("kind") == "rescheduling":
+                return _kind_to_active_type(
+                    filt.rescheduling.original_state.WhichOneof("kind"))
+    except Exception:
+        pass
+
+    # 回退 2：card.queue（普通牌组场景）
+    queue = card.queue
+    if queue == 0:
+        return "new"
+    if queue in (1, 3):
+        return "learning"
+    return "review"
+
+
 def get_next_card(mw) -> dict:
     """
     获取下一张卡片数据。
@@ -236,16 +296,12 @@ def _render_card_data(mw, card) -> dict:
     css = card.render_output().css
     counts = mw.col.sched.counts(card)
 
-    # 判断当前卡片类型用于高亮
-    queue = card.queue
-    if queue == 0:
-        active_type = "new"
-    elif queue in (1, 3):
-        active_type = "learning"
-    elif card.type == 3:
-        active_type = "learning"
-    else:
-        active_type = "review"
+    # 判断当前卡片类型用于高亮（new/learning/review）。
+    # 用调度器给出的 states.current（Anki 翻面高亮计数的同一数据源），
+    # 而不是 card.queue/card.type —— 后两者在过滤牌组（自定义学习）里会失真：
+    # 自定义学习会把学习中卡借出进 cram 牌组，其 queue 常被当作 review(2)，
+    # 导致学习卡被误高亮成"待复习"。
+    active_type = _active_type_from_states(mw, states, card)
 
     return {
         "status": "card",
