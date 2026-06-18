@@ -615,23 +615,40 @@ class TTSManager:
         )
 
     def _generate_custom(self, text: str, cache_key: str):
-        """Generate audio from custom URL. Returns (bytes, ext) or None."""
+        """Generate audio from a user-supplied URL template (GET with placeholders).
+
+        用户在配置里填一个带占位符的 URL 模板，朗读时把实际值替换进去再发 GET：
+          {text}     -> 要朗读的文本（URL 编码）
+          {voice}    -> 人声名（与 Edge TTS 共用 TTS_VOICE_MAP 映射）
+          {language} -> 学习语言（如「英语」）
+
+        若 URL 不含任何占位符，则在末尾追加 ?text=<文本>（或 &text=），
+        兼容只接受一个 text 参数、speaker 固定的简单接口。
+        """
         import requests
+        from urllib.parse import quote
 
         config = get_config()
-        url = config.get("tts_custom_url", "")
-        if not url:
+        template = config.get("tts_custom_url", "")
+        if not template:
             print("ERROR: Custom TTS URL not configured")
             return None
 
         language = config.get("learning_language", "英语")
         voice = _get_voice_for_language(language)
 
-        resp = requests.post(
-            url,
-            json={"text": text, "voice": voice, "language": language},
-            timeout=30,
-        )
+        # 替换占位符；先编码再替换，避免占位符本身被编码
+        encoded_text = quote(text)
+        url = template.replace("{text}", encoded_text)
+        url = url.replace("{voice}", quote(voice))
+        url = url.replace("{language}", quote(language))
+
+        # 不含占位符：自动追加 text 参数
+        if url == template:
+            sep = "&" if "?" in url else "?"
+            url = f"{url}{sep}text={encoded_text}"
+
+        resp = requests.get(url, timeout=30)
         resp.raise_for_status()
 
         content_type = resp.headers.get("content-type", "")

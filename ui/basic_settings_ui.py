@@ -212,25 +212,37 @@ def add_othersetting(parent_dialog, basic_layout, current_config):
 
     # Edge TTS voice picker
     parent_dialog.edge_voice_combo = NoWheelComboBox()
+    # 部分人声名很长，不限制会撑宽控件并出现水平滚动条
+    parent_dialog.edge_voice_combo.setMaximumWidth(400)
     saved_language_for_voice = current_config.get("learning_language", "英语")
     override_key = f"edge_tts_voice_{saved_language_for_voice}"
     saved_voice = current_config.get(override_key, "")
     # Don't populate yet – voice list is not loaded; will populate after load completes
     parent_dialog.edge_voice_combo.addItem("(加载中…)", "")
-    parent_dialog.edge_voice_combo.setVisible(saved_tts == "edge_tts")
 
     parent_dialog.tts_custom_url = QLineEdit(current_config.get("tts_custom_url", ""))
-    parent_dialog.tts_custom_url.setPlaceholderText("POST {text, voice, language} → 返回音频文件")
-    parent_dialog.tts_custom_url.setVisible(saved_tts == "custom_url")
+    parent_dialog.tts_custom_url.setPlaceholderText("示例:http://localhost:9880/?text={text}&speaker=trump")
 
     tts_layout.addRow("TTS 引擎:", parent_dialog.tts_engine_combo)
+
+    # 让 QFormLayout 自己管理 label（与「TTS 引擎」等 label 自动对齐到同一列），
+    # 再通过 labelForField() 拿到它生成的 QLabel，切换引擎时连同 field 一起显隐，
+    # 避免只隐藏 field 而残留 label 文字。
     tts_layout.addRow("Edge 人声:", parent_dialog.edge_voice_combo)
-    tts_layout.addRow("", parent_dialog.tts_custom_url)
+    tts_layout.addRow("自定义 URL:", parent_dialog.tts_custom_url)
+    parent_dialog.tts_edge_label = tts_layout.labelForField(parent_dialog.edge_voice_combo)
+    parent_dialog.tts_custom_label = tts_layout.labelForField(parent_dialog.tts_custom_url)
 
     def _on_tts_engine_changed(text):
-        parent_dialog.tts_custom_url.setVisible("自定义" in text)
-        parent_dialog.edge_voice_combo.setVisible("Edge" in text)
+        is_custom = "自定义" in text
+        is_edge = "Edge" in text
+        parent_dialog.tts_custom_url.setVisible(is_custom)
+        parent_dialog.tts_custom_label.setVisible(is_custom)
+        parent_dialog.edge_voice_combo.setVisible(is_edge)
+        parent_dialog.tts_edge_label.setVisible(is_edge)
 
+    # 按当前已保存的引擎设置初始可见性
+    _on_tts_engine_changed(saved_tts_label)
     parent_dialog.tts_engine_combo.currentTextChanged.connect(_on_tts_engine_changed)
 
     # Refresh voice list when learning language changes
