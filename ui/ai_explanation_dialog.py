@@ -462,7 +462,11 @@ class AIExplanationDialog(QDialog):
                                 break
                             try:
                                 data = json.loads(json_data)
-                                delta_content = data.get("choices", [{}])[0].get("delta", {}).get("content", "")
+                                # choices 可能为空列表（结尾帧/usage帧），需安全取值，否则抛 IndexError 中断整个流
+                                choices = data.get("choices") or []
+                                if not choices:
+                                    continue
+                                delta_content = choices[0].get("delta", {}).get("content", "")
                                 if delta_content:
                                     self.stream_queue.put(delta_content)
                                     full_response_content += delta_content
