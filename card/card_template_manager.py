@@ -17,6 +17,7 @@ def _load_template(filename: str) -> str:
 def get_font_css() -> str:
     config = get_config()
     font_family = config.get("font_family", "默认字体")
+    font_bold = config.get("font_bold", True)
 
     if font_family == "tms论文字体":
         font_css = (
@@ -29,8 +30,18 @@ def get_font_css() -> str:
             "'KaiTi', '楷体', 'STKaiti', 'SimKai', 'BiauKai', "
             "'Noto Serif SC', 'Source Han Serif', 'Times New Roman', Times;"
         )
+    elif font_family == "网页无衬线字体":
+        font_css = (
+            "font-family: system-ui, -apple-system, 'Segoe UI', "
+            "'PingFang SC', 'Microsoft YaHei', 'Helvetica Neue', "
+            "Arial, sans-serif;"
+        )
     else:
-        font_css = "font-weight: bold;"
+        font_css = ""
+
+    # 加粗作为独立选项，与字体族选择解耦
+    if font_bold:
+        font_css = (font_css + " font-weight: bold;").strip()
 
     return " ".join(font_css.split())
 

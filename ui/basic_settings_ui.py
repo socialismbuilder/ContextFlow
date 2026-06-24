@@ -317,7 +317,7 @@ def add_othersetting(parent_dialog, basic_layout, current_config):
 
     # 添加字体选择
     parent_dialog.font_combo = NoWheelComboBox()
-    PRESET_FONTS = current_config.get("preset_fonts", ["默认字体", "tms论文字体", "考试字体（衬线）"])
+    PRESET_FONTS = current_config.get("preset_fonts", ["默认字体", "tms论文字体", "考试字体（衬线）", "网页无衬线字体"])
     parent_dialog.font_combo.addItems(PRESET_FONTS)
     saved_font = current_config.get("font_family", "默认字体")
     if saved_font in PRESET_FONTS:
@@ -325,10 +325,20 @@ def add_othersetting(parent_dialog, basic_layout, current_config):
     else:
         parent_dialog.font_combo.setCurrentText("默认字体")
 
-    # 连接字体变化事件，以便更新卡片模板
-    parent_dialog.font_combo.currentTextChanged.connect(lambda: _on_font_changed(parent_dialog))
+    # 加粗复选框（与字体族选择解耦，独立控制）
+    parent_dialog.font_bold = QCheckBox("加粗")
+    parent_dialog.font_bold.setChecked(current_config.get("font_bold", True))
 
-    other_layout.addRow("字体选择:", parent_dialog.font_combo)
+    # 连接变化事件，以便更新卡片模板
+    parent_dialog.font_combo.currentTextChanged.connect(lambda: _on_font_changed(parent_dialog))
+    parent_dialog.font_bold.toggled.connect(lambda _: _on_font_changed(parent_dialog))
+
+    font_row = QWidget()
+    font_row_layout = QHBoxLayout(font_row)
+    font_row_layout.setContentsMargins(0, 0, 0, 0)
+    font_row_layout.addWidget(parent_dialog.font_combo, 1)
+    font_row_layout.addWidget(parent_dialog.font_bold)
+    other_layout.addRow("字体选择:", font_row)
 
     other_group.setLayout(other_layout)
     basic_layout.addWidget(other_group)
@@ -618,6 +628,7 @@ def save_basic_settings(parent_dialog):
         "learning_language": parent_dialog.learning_language_combo.currentText(),
         "prompt_name": parent_dialog.prompt_name_combo.currentText(),
         "font_family": parent_dialog.font_combo.currentText(),
+        "font_bold": parent_dialog.font_bold.isChecked(),
         "tts_engine": tts_engine_value,
         "tts_custom_url": parent_dialog.tts_custom_url.text(),
         "tts_replace_audio": parent_dialog.tts_replace_audio.isChecked(),

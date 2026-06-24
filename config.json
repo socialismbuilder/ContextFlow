@@ -99,10 +99,12 @@
         "自定义"
     ],
     "font_family": "默认字体",
+    "font_bold": true,
     "preset_fonts": [
         "默认字体",
         "tms论文字体",
-        "考试字体（衬线）"
+        "考试字体（衬线）",
+        "网页无衬线字体"
     ],
     "tts_engine": "edge_tts",
     "tts_custom_url": "",
