@@ -43,6 +43,13 @@ def _is_target_deck(card, current_deck, base_deck_name):
     return (current_deck == base_deck_name or current_deck.startswith(base_deck_name + "::")) and card.ord == 0
 
 
+def _is_saved_deck(card, current_deck, save_deck_name):
+    """判断卡片是否属于保存例句牌组且为正面（ord==0）"""
+    if not save_deck_name:
+        return False
+    return (current_deck == save_deck_name or current_deck.startswith(save_deck_name + "::")) and card.ord == 0
+
+
 def _extract_keyword(card, field_index_match):
     """从卡片中提取关键词（复用 main_logic 的逻辑）"""
     try:
@@ -58,36 +65,58 @@ def _extract_keyword(card, field_index_match):
         return None
 
 
-def _render_web_question(card, original_html):
-    """
-    Web 端问题面渲染：注入 ContextFlow 例句。
-    不依赖 reviewer.state、QTimer、进度条。
-    返回修改后的 HTML，如果非目标牌组则返回原始 HTML。
-    """
-    from .config_manager import get_config
-    from .cache.cache_manager import pop_cache, load_cache
-    from .card.card_template_manager import get_web_front_html
-    from . import main_logic
+def _clean_word(kw: str) -> str:
+    """清洗关键词用于朗读：去掉括号注释（如 'word(动词)' → 'word'）。"""
+    word = re.sub(r'[（(].*?[）)]', '', kw).strip()
+    return word if word else kw
 
-    config = get_config()
+
+def _strip_sound_tags(text: str) -> str:
+    """轻量清洗：只去掉 [sound:...] 等方括号媒体标签，保留 <u> 等标记。
+    （<u> 用于高亮目标词，前端 highlightHtml 会受控解析为高亮 span，安全。）
+    """
+    import html as _html
+    no_sound = re.sub(r'\[sound:[^\]]*\]', '', text)
+    return _html.unescape(no_sound).strip()
+
+
+def _extract_saved_sentence(card):
+    """
+    从保存例句卡的 note 读取例句对（fields[0]=例句, fields[1]=翻译）。
+    保留 <u> 高亮标记（前端受控渲染），只清洗 [sound:] 等媒体标签。
+    返回 (sentence, translation) 或 None。
+    """
     try:
-        from aqt import mw
-        current_deck = mw.col.decks.name(card.did)
+        note = card.note()
+        if not note.fields or len(note.fields) < 2:
+            return None
+        sentence = _strip_sound_tags(note.fields[0])
+        translation = _strip_sound_tags(note.fields[1])
+        if not sentence:
+            return None
+        return (sentence, translation)
     except Exception:
-        return original_html
+        return None
 
-    config_deck_name = config.get("deck_name")
-    field_index_match = re.search(r'\[(\d+)\]$', config_deck_name)
-    base_deck_name = re.sub(r'\[\d+\]$', '', config_deck_name) if field_index_match else config_deck_name
 
-    if not _is_target_deck(card, current_deck, base_deck_name):
-        return original_html
+def _prepare_target_sentence(card, base_deck_name, field_index_match):
+    """
+    目标牌组（target）例句准备：从缓存取例句对，返回结构化数据。
+
+    不再生成 HTML——只返回例句对 + 关键词 + 就绪状态，前端自行渲染。
+    命中缓存：更新全局显示状态、缓存用尽时入队、预取后续卡片（业务逻辑全部保留）。
+    未命中：入队生成，标记 ready=False，前端轮询。
+    """
+    from .cache.cache_manager import pop_cache, load_cache
+    from . import main_logic
 
     keyword = _extract_keyword(card, field_index_match)
     if not keyword:
-        return original_html
+        return None
 
-    # 查缓存
+    # 朗读用纯词（去括号注释）
+    speak_keyword = _clean_word(keyword)
+
     popped_pair = pop_cache(keyword)
     if popped_pair:
         sentence, translation = popped_pair
@@ -96,8 +125,6 @@ def _render_web_question(card, original_html):
         # 如果缓存用尽，重新入队
         if not load_cache(keyword):
             main_logic._task_manager.reorganize_queue(keyword, is_repopulate=True)
-        # 生成例句 HTML
-        sentence_html = get_web_front_html(sentence, keyword)
 
         # 预取后续卡片例句（复用桌面端逻辑）
         try:
@@ -105,54 +132,23 @@ def _render_web_question(card, original_html):
             main_logic._task_manager.reorganize_queue(upcoming_keywords)
         except Exception as e:
             print(f"[ContextFlow Web] 预取失败: {e}")
-    else:
-        # 缓存未命中，入队生成
-        main_logic._task_manager.reorganize_queue(keyword)
-        main_logic._update_showing_state("例句生成中...", "", keyword)
-        sentence_html = get_web_front_html("例句生成中...", keyword)
 
-    # 重写媒体 URL（例句模板中的 pycmd 等）
-    sentence_html = rewrite_media_urls(sentence_html)
+        return {
+            "sentence": sentence,
+            "translation": translation,
+            "keyword": speak_keyword,
+            "ready": True,
+        }
 
-    # 正面只显示例句，不显示原始卡片
-    return sentence_html
-
-
-def _render_web_answer(card, original_answer_html):
-    """
-    Web 端答案面渲染：我们的例句+翻译 + 原始卡片背面（不含正面重复）。
-
-    card.answer() 会包含 {{FrontSide}} 展开的正面内容，导致嵌套。
-    所以我们直接取 answer_text（纯背面模板渲染结果），避免正面重复。
-    """
-    from . import main_logic
-    from .card.card_template_manager import get_web_back_html
-
-    sentence = main_logic.showing_sentence
-    translation = main_logic.showing_translation
-    keyword = main_logic.showing_keyword
-
-    if not sentence or sentence == "例句生成中...":
-        return rewrite_media_urls(original_answer_html)
-
-    # 我们的 HTML：例句+翻译（不包含原始卡片）
-    our_html = get_web_back_html(sentence, translation, "", keyword)
-    our_html = rewrite_media_urls(our_html)
-
-    # 原始卡片背面：用 CSS + answer_text
-    # answer_text 是背面模板渲染结果，不含 CSS 包装，但包含 {{FrontSide}} 展开内容
-    # 我们不能直接用 answer_text，因为 {{FrontSide}} 会把正面再显示一遍
-    # 所以改用 original_answer_html，但要去掉其中与正面重复的部分
-    # 最简单的方式：直接用 card.answer() 返回的完整内容（含CSS）
-    # 然后去掉 {{FrontSide}} 带来的正面重复
-    #
-    # 实际上 card.answer() = <style>CSS</style>answer_text
-    # answer_text 包含 {{FrontSide}} 展开的内容
-    # 我们无法从 API 层面分离 {{FrontSide}} 和背面内容
-    # 所以直接把 card.answer() 原样输出，让用户看到原始卡片的完整答案面
-    original = rewrite_media_urls(original_answer_html)
-
-    return our_html + original
+    # 缓存未命中，入队生成
+    main_logic._task_manager.reorganize_queue(keyword)
+    main_logic._update_showing_state("例句生成中...", "", keyword)
+    return {
+        "sentence": "例句生成中...",
+        "translation": "",
+        "keyword": speak_keyword,
+        "ready": False,
+    }
 
 
 # ── 卡片获取 ──────────────────────────────────────────────────
@@ -259,41 +255,62 @@ def get_next_card(mw) -> dict:
 
 
 def _render_card_data(mw, card) -> dict:
-    """将卡片渲染为 API 响应数据，一次性返回正面和背面。"""
-    from . import main_logic
-    from .card.card_template_manager import get_web_back_html
+    """
+    将卡片渲染为 API 响应数据。
+
+    三种模式（card_mode）：
+      - target：目标牌组，注入 ContextFlow 例句（发例句对+关键词+就绪状态，前端渲染）
+      - saved： 保存例句牌组，直接读 note 字段（发例句对，无关键词）
+      - plain： 普通牌组，发渲染好的 Anki HTML，前端直接展示
+
+    正面与背面共用同一份例句数据，前端根据 showTranslation 切换渲染。
+    """
     from .config_manager import get_config
 
     states = mw.col._backend.get_scheduling_states(card.id)
     labels = mw.col._backend.describe_next_states(states)
 
-    # 判断是否为目标牌组
     config = get_config()
-    config_deck_name = config.get("deck_name")
+    config_deck_name = config.get("deck_name") or ""
+    save_deck_name = config.get("save_deck") or ""
     field_index_match = re.search(r'\[(\d+)\]$', config_deck_name)
     base_deck_name = re.sub(r'\[\d+\]$', '', config_deck_name) if field_index_match else config_deck_name
     current_deck = mw.col.decks.name(card.did)
-    is_target = _is_target_deck(card, current_deck, base_deck_name)
 
-    # 渲染 contextflow 例句正面（例句+翻译隐藏条）
-    raw_question = card.question()
-    question_html = _render_web_question(card, raw_question)
+    # 按三模式分流
+    sentence = ""
+    translation = ""
+    keyword = ""
+    sentence_ready = True
+    question_html = ""
 
-    # 原始卡片背面
-    raw_answer = card.answer()
-    origin_html = rewrite_media_urls(raw_answer)
+    if _is_target_deck(card, current_deck, base_deck_name):
+        card_mode = "target"
+        data = _prepare_target_sentence(card, base_deck_name, field_index_match)
+        if data is None:
+            # 提取关键词失败，回退为普通牌组渲染
+            card_mode = "plain"
+        else:
+            sentence = data["sentence"]
+            translation = data["translation"]
+            keyword = data["keyword"]
+            sentence_ready = data["ready"]
+    elif _is_saved_deck(card, current_deck, save_deck_name):
+        saved = _extract_saved_sentence(card)
+        if saved:
+            card_mode = "saved"
+            sentence, translation = saved
+        else:
+            card_mode = "plain"
+    else:
+        card_mode = "plain"
 
-    # 只有目标牌组才生成我们的例句背面
-    sentence_back_html = ""
-    if is_target:
-        sentence = main_logic.showing_sentence
-        translation = main_logic.showing_translation
-        keyword = main_logic.showing_keyword
-        if sentence and sentence != "例句生成中...":
-            sentence_back_html = get_web_back_html(sentence, translation, "", keyword)
-            sentence_back_html = rewrite_media_urls(sentence_back_html)
+    if card_mode == "plain":
+        question_html = rewrite_media_urls(card.question())
 
-    css = card.render_output().css
+    # 原始卡片背面（三种模式都要，翻面时显示）
+    origin_html = rewrite_media_urls(card.answer())
+
     counts = mw.col.sched.counts(card)
 
     # 判断当前卡片类型用于高亮（new/learning/review）。
@@ -306,11 +323,13 @@ def _render_card_data(mw, card) -> dict:
     return {
         "status": "card",
         "card_id": card.id,
-        "is_target": is_target,
+        "card_mode": card_mode,
+        "sentence": sentence,
+        "translation": translation,
+        "keyword": keyword,
+        "sentence_ready": sentence_ready,
         "question_html": question_html,
-        "sentence_back_html": sentence_back_html,
         "origin_html": origin_html,
-        "css": css,
         "button_labels": list(labels),
         "active_type": active_type,
         "counts": {
@@ -324,9 +343,13 @@ def _render_card_data(mw, card) -> dict:
 # ── 答案获取 ──────────────────────────────────────────────────
 
 def get_answer(mw, card_id: int) -> dict:
-    """获取卡片答案面。分开返回我们的例句+翻译 和 原始卡片答案。"""
+    """
+    获取卡片答案面（/api/card/show 的 fallback）。
+
+    返回当前显示状态的例句对（结构化，前端自行渲染）+ 原始卡片背面 HTML。
+    例句数据取自 main_logic.showing_*（由 _prepare_target_sentence 同步写入）。
+    """
     from . import main_logic
-    from .card.card_template_manager import get_web_back_html
 
     card = mw.col.get_card(card_id)
 
@@ -334,24 +357,22 @@ def get_answer(mw, card_id: int) -> dict:
     translation = main_logic.showing_translation
     keyword = main_logic.showing_keyword
 
-    if not sentence or sentence == "例句生成中...":
-        # 例句还没生成，返回原始答案
-        raw_answer = card.answer()
-        return {
-            "sentence_html": "",
-            "answer_html": rewrite_media_urls(raw_answer),
-        }
-
-    # 我们的例句+翻译（不含原始卡片）
-    our_html = get_web_back_html(sentence, translation, "", keyword)
-    our_html = rewrite_media_urls(our_html)
-
-    # 原始卡片答案面
     raw_answer = card.answer()
     original = rewrite_media_urls(raw_answer)
 
+    if not sentence or sentence == "例句生成中...":
+        # 例句还没生成，只返回原始答案
+        return {
+            "sentence": "",
+            "translation": "",
+            "keyword": "",
+            "answer_html": original,
+        }
+
     return {
-        "sentence_html": our_html,
+        "sentence": sentence,
+        "translation": translation,
+        "keyword": _clean_word(keyword) if keyword else "",
         "answer_html": original,
     }
 
@@ -409,9 +430,8 @@ def refresh_sentence(mw) -> dict:
     # 重置展示时间，让答题时 time_taken() 从刷新时刻重新计时
     _card_show_times[card.id] = time.time()
 
-    # 重新渲染问题面：pop_cache 命中则直接显示，未命中则入队生成并显示"例句生成中..."
-    # _render_web_question 会同步更新 main_logic.showing_* 状态，
-    # _render_card_data 据此生成 sentence_back_html
+    # 重新准备例句：_render_card_data 的 target 分支会 pop_cache 取下一条，
+    # 命中则直接返回新例句对，未命中则入队生成并返回 ready=False（前端轮询）
     return _render_card_data(mw, card)
 
 
@@ -486,12 +506,11 @@ def get_status(mw) -> dict:
 
 def check_sentence_status(mw) -> dict:
     """
-    检查当前卡片的例句是否已生成。
-    用于手机端轮询：如果例句已就绪，返回新的问题面 HTML 和背面 HTML。
+    检查当前卡片的例句是否已生成（仅 target 牌组轮询用）。
+    例句就绪时返回结构化例句对 + 关键词，前端自行渲染。
     """
     from . import main_logic
     from .cache.cache_manager import load_cache, pop_cache
-    from .card.card_template_manager import get_web_front_html, get_web_back_html
 
     keyword = main_logic.showing_keyword
     current_sentence = main_logic.showing_sentence
@@ -505,8 +524,7 @@ def check_sentence_status(mw) -> dict:
     if not cached:
         return {"ready": False}
 
-    # 例句已就绪：取出并直接渲染（不再调用 _render_web_question，避免二次 pop_cache
-    # 把刚取出的例句丢弃、或在缓存恰好用尽时回退成"例句生成中..."）
+    # 例句已就绪：取出并直接返回（不再二次 pop_cache，避免丢弃刚取出的例句）
     popped_pair = pop_cache(keyword)
     if popped_pair:
         sentence, translation = popped_pair
@@ -516,14 +534,11 @@ def check_sentence_status(mw) -> dict:
         if not load_cache(keyword):
             main_logic._task_manager.reorganize_queue(keyword, is_repopulate=True)
 
-        question_html = rewrite_media_urls(get_web_front_html(sentence, keyword))
-        sentence_back_html = rewrite_media_urls(
-            get_web_back_html(sentence, translation, "", keyword)
-        )
         return {
             "ready": True,
-            "question_html": question_html,
-            "sentence_back_html": sentence_back_html,
+            "sentence": sentence,
+            "translation": translation,
+            "keyword": _clean_word(keyword),
         }
 
     return {"ready": False}

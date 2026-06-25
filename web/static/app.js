@@ -2,11 +2,11 @@
 
 let currentCardId = null;
 let currentActiveType = null;      // 当前卡片类型: new/learning/review
-let currentIsTarget = false;       // 当前卡片是否为目标（例句）牌组
+let currentCardMode = 'plain';     // 当前卡片模式: target / saved / plain
 let waitTimer = null;
 let sentencePollTimer = null;
 let cachedOriginHtml = null;       // 缓存原始卡片背面 HTML
-let cachedSentenceBackHtml = null; // 缓存例句+翻译 HTML（背面时替换 contextflow-content）
+let cachedSentenceData = null;     // 缓存例句数据 {sentence, translation, keyword, mode}（背面时重渲染翻译）
 
 // ── 初始化 ───────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', () => {
@@ -80,19 +80,37 @@ function handleCardResponse(data) {
 function showQuestion(data) {
     hideAllScreens();
 
-    // 是否目标牌组由后端明确给出（不能依赖 sentence_back_html，
-    // 否则例句仍在生成时 sentence_back_html 为空，会被误判为非目标牌组，
-    // 导致 contextflow-side 被隐藏，轮询拿到例句后也看不到）
-    currentIsTarget = !!data.is_target;
-
-    // 例句+隐藏条 → contextflow-content
-    document.getElementById('contextflow-content').innerHTML = data.question_html || '';
-    document.getElementById('origin-content').innerHTML = '';
-    document.getElementById('card-css').innerHTML = '';
+    const mode = data.card_mode || 'plain';
+    currentCardMode = mode;
+    const isSentenceCard = (mode === 'target' || mode === 'saved');
 
     // 缓存背面数据，翻面时不再请求后端
     cachedOriginHtml = data.origin_html || null;
-    cachedSentenceBackHtml = currentIsTarget ? (data.sentence_back_html || null) : null;
+    cachedSentenceData = isSentenceCard
+        ? { sentence: data.sentence, translation: data.translation, keyword: data.keyword, mode }
+        : null;
+
+    document.getElementById('origin-content').innerHTML = '';
+    document.getElementById('card-css').innerHTML = '';
+
+    if (isSentenceCard) {
+        // target / saved：前端用数据渲染例句卡片
+        renderSentenceCard(document.getElementById('contextflow-content'), {
+            sentence: data.sentence,
+            translation: data.translation,
+            keyword: data.keyword,
+            showTranslation: false,
+            mode,
+        });
+        document.getElementById('contextflow-side').classList.remove('hidden');
+        document.getElementById('origin-side').classList.add('hidden');
+    } else {
+        // plain：直接显示渲染好的原始卡片正面 HTML
+        document.getElementById('contextflow-side').classList.add('hidden');
+        document.getElementById('contextflow-content').innerHTML = '';
+        document.getElementById('origin-side').classList.remove('hidden');
+        document.getElementById('origin-content').innerHTML = data.question_html || '';
+    }
 
     // 更新计数
     if (data.counts) {
@@ -108,35 +126,23 @@ function showQuestion(data) {
         }
     }
 
-    if (currentIsTarget) {
-        // 目标牌组：显示例句区，隐藏原始卡片区
-        document.getElementById('contextflow-side').classList.remove('hidden');
-        document.getElementById('origin-side').classList.add('hidden');
-    } else {
-        // 非目标牌组：隐藏例句区，原始卡片区显示正面
-        document.getElementById('contextflow-side').classList.add('hidden');
-        document.getElementById('origin-side').classList.remove('hidden');
-        document.getElementById('origin-content').innerHTML = data.question_html || '';
-    }
     document.getElementById('answer-buttons').classList.add('hidden');
     document.getElementById('flip-btn').classList.remove('hidden');
     document.getElementById('flip-area').classList.remove('hidden');
     document.getElementById('card-area').classList.remove('hidden');
 
-    // 刷新按钮由例句模板渲染，只在目标牌组的例句区出现，无需手动显隐
-
     playAutoAudio();
 
-    // 自动点击朗读单词按钮（仅目标牌组）
-    if (currentIsTarget) {
+    // 自动点击朗读单词按钮（仅 target 牌组且有 keyword）
+    if (mode === 'target' && data.keyword) {
         setTimeout(() => {
             const btn = document.getElementById('tts-word');
             if (btn && !btn.classList.contains('loading')) { btn.click(); }
         }, 300);
     }
 
-    // 如果内容中有"例句生成中..."，启动轮询检查例句是否就绪
-    if (data.question_html && data.question_html.includes('例句生成中')) {
+    // target 牌组例句未就绪（例句生成中）→ 轮询
+    if (mode === 'target' && data.sentence_ready === false) {
         startSentencePolling();
     } else {
         stopSentencePolling();
@@ -147,25 +153,38 @@ function showQuestion(data) {
 async function showAnswer() {
     if (!currentCardId) return;
 
-    // 用加载时记录的标志，而不是 cachedSentenceBackHtml
-    // （例句由轮询补上时 cachedSentenceBackHtml 之前是空的，会导致翻面时误判为非目标牌组）
-    const isTarget = currentIsTarget;
+    const mode = currentCardMode;
+    const isSentenceCard = (mode === 'target' || mode === 'saved');
 
     document.getElementById('flip-btn').classList.add('hidden');
     document.getElementById('flip-area').classList.add('hidden');
 
-    if (isTarget) {
-        // 目标牌组：用例句+翻译替换 contextflow-content 中的隐藏条
-        if (cachedSentenceBackHtml) {
-            document.getElementById('contextflow-content').innerHTML = cachedSentenceBackHtml;
+    if (isSentenceCard) {
+        // target / saved：重渲染例句卡片，显示真实翻译（遮挡条 → 翻译）
+        if (cachedSentenceData) {
+            renderSentenceCard(document.getElementById('contextflow-content'), {
+                sentence: cachedSentenceData.sentence,
+                translation: cachedSentenceData.translation,
+                keyword: cachedSentenceData.keyword,
+                showTranslation: true,
+                mode: cachedSentenceData.mode,
+            });
         }
     } else {
-        // 非目标牌组：隐藏正面（origin_html 已包含完整背面）
+        // plain：隐藏例句区（origin_html 已包含完整背面）
         document.getElementById('contextflow-side').classList.add('hidden');
     }
 
-    // 显示原始卡片背面
-    if (cachedOriginHtml) {
+    // 显示原始卡片背面：
+    //   - target：原卡是用户的单词卡，背面是释义，与例句不重复 → 叠加显示
+    //   - saved：原卡背面就是例句+翻译（Anki 模板渲染），与前端渲染重复 → 不显示
+    //   - plain：整张卡都是原卡
+    let showOriginSide = true;
+    if (mode === 'saved') {
+        showOriginSide = false;
+        document.getElementById('origin-side').classList.add('hidden');
+        document.getElementById('origin-content').innerHTML = '';
+    } else if (cachedOriginHtml) {
         document.getElementById('origin-content').innerHTML = cachedOriginHtml;
     } else {
         try {
@@ -178,11 +197,13 @@ async function showAnswer() {
         }
     }
 
-    document.getElementById('origin-side').classList.remove('hidden');
+    if (showOriginSide) {
+        document.getElementById('origin-side').classList.remove('hidden');
+    }
     document.getElementById('answer-buttons').classList.remove('hidden');
 
-    // 自动点击朗读单词按钮（仅目标牌组）
-    if (isTarget) {
+    // 自动点击朗读单词按钮（仅 target 牌组且有 keyword）
+    if (mode === 'target' && cachedSentenceData && cachedSentenceData.keyword) {
         setTimeout(() => {
             const btn = document.getElementById('tts-word');
             if (btn && !btn.classList.contains('loading')) { btn.click(); }
@@ -362,6 +383,125 @@ function escapeHtml(text) {
     return div.innerHTML;
 }
 
+// 去掉 HTML 标签，得到纯文本（用于 TTS 朗读例句）
+function stripHtml(html) {
+    const div = document.createElement('div');
+    div.innerHTML = html;
+    return (div.textContent || div.innerText || '').replace(/\s+/g, ' ').trim();
+}
+
+// 将 AI 例句中的 <u>...</u> 标记转换为高亮 span，其余文本安全转义（防 XSS）。
+// 受控解析：只有 <u> 标签会被保留为高亮，其余任何标签都被当文本处理。
+function highlightHtml(text) {
+    if (!text) return '';
+    // 用占位符分割出 <u>...</u> 片段
+    const parts = text.split(/(<u>.*?<\/u>)/);
+    return parts.map(part => {
+        const m = part.match(/^<u>(.*)<\/u>$/s);
+        if (m) {
+            return '<span class="highlight">' + escapeHtml(m[1]) + '</span>';
+        }
+        return escapeHtml(part);
+    }).join('');
+}
+
+// 构建例句卡片 DOM（target / saved 模式通用）。
+//   showTranslation=false（正面）：例句 + 翻译遮挡条
+//   showTranslation=true（背面）：例句 + 真实翻译
+//   mode='target'：带朗读单词按钮 + 刷新按钮；mode='saved'：仅朗读例句按钮
+const REFRESH_SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24">'
+    + '<path d="M0 0h24v24H0z" fill="none"/>'
+    + '<path fill="currentColor" d="M12.077 19q-2.931 0-4.966-2.033q-2.034-2.034-2.034-4.964t2.034-4.966T12.077 5q1.783 0 3.339.847q1.555.847 2.507 2.365V5.5q0-.213.144-.356T18.424 5t.356.144t.143.356v3.923q0 .343-.232.576t-.576.232h-3.923q-.212 0-.356-.144t-.144-.357t.144-.356t.356-.143h3.2q-.78-1.496-2.197-2.364Q13.78 6 12.077 6q-2.5 0-4.25 1.75T6.077 12t1.75 4.25t4.25 1.75q1.787 0 3.271-.968q1.485-.969 2.202-2.573q.085-.196.274-.275q.19-.08.388-.013q.211.067.28.275t-.015.404q-.833 1.885-2.56 3.017T12.077 19"/>'
+    + '</svg>';
+
+function renderSentenceCard(container, opts) {
+    const { sentence, translation, keyword, showTranslation, mode } = opts;
+
+    container.innerHTML = '';
+    const root = document.createElement('div');
+    root.className = 'cf-sentence-card';
+
+    // 例句
+    const sLabel = document.createElement('div');
+    sLabel.className = 'label';
+    sLabel.textContent = '例句';
+    root.appendChild(sLabel);
+
+    const sText = document.createElement('div');
+    sText.className = 'card-text';
+    sText.innerHTML = highlightHtml(sentence);
+    root.appendChild(sText);
+
+    // 翻译：正面用遮挡条，背面用真实翻译
+    const tLabel = document.createElement('div');
+    tLabel.className = 'label';
+    tLabel.style.marginTop = '10px';
+    tLabel.textContent = '翻译';
+    root.appendChild(tLabel);
+
+    const tText = document.createElement('div');
+    tText.className = 'card-text';
+    tText.style.lineHeight = '1.4';
+    tText.style.opacity = '0.85';
+    tText.style.fontSize = '14px';
+    if (showTranslation) {
+        tText.innerHTML = highlightHtml(translation);
+    } else {
+        tText.innerHTML =
+            '<div class="translation-placeholder-line"></div>' +
+            '<div class="translation-placeholder-line"></div>';
+    }
+    root.appendChild(tText);
+
+    // 按钮组
+    const btnGroup = document.createElement('div');
+    btnGroup.className = 'tts-btn-group';
+
+    // target 模式左侧放刷新按钮
+    if (mode === 'target') {
+        const refresh = document.createElement('div');
+        refresh.className = 'tts-btn refresh-btn';
+        refresh.id = 'refresh-btn';
+        refresh.title = '重新生成例句';
+        refresh.innerHTML = REFRESH_SVG;
+        refresh.addEventListener('click', refreshSentence);
+        btnGroup.appendChild(refresh);
+    }
+
+    const ttsRight = document.createElement('div');
+    ttsRight.className = 'tts-right';
+
+    // target 模式且有 keyword：朗读单词按钮
+    if (mode === 'target' && keyword) {
+        const wordBtn = document.createElement('div');
+        wordBtn.className = 'tts-btn';
+        wordBtn.id = 'tts-word';
+        wordBtn.innerHTML = '<span class="tts-label">朗读单词</span>';
+        wordBtn.addEventListener('click', () => {
+            wordBtn.classList.add('loading');
+            playTTS(keyword);
+        });
+        ttsRight.appendChild(wordBtn);
+    }
+
+    // 朗读例句按钮（target / saved 都有）
+    const sentenceText = stripHtml(sentence);
+    const sentBtn = document.createElement('div');
+    sentBtn.className = 'tts-btn';
+    sentBtn.id = 'tts-sentence';
+    sentBtn.innerHTML = '<span class="tts-label">朗读例句</span>';
+    sentBtn.addEventListener('click', () => {
+        sentBtn.classList.add('loading');
+        playTTS(sentenceText);
+    });
+    ttsRight.appendChild(sentBtn);
+
+    btnGroup.appendChild(ttsRight);
+    root.appendChild(btnGroup);
+
+    container.appendChild(root);
+}
+
 // ── TTS 播放 ─────────────────────────────────────────
 function playTTS(text) {
     if (!text) return;
@@ -389,13 +529,28 @@ async function pollSentence() {
     try {
         const resp = await fetch('/api/card/sentence');
         const data = await resp.json();
-        if (data.ready && data.question_html) {
+        if (data.ready && data.sentence) {
             stopSentencePolling();
-            document.getElementById('contextflow-content').innerHTML = data.question_html;
-            // 缓存背面 HTML，翻面时直接使用（否则轮询补上的例句在翻面时会缺失翻译）
-            if (data.sentence_back_html) {
-                cachedSentenceBackHtml = data.sentence_back_html;
-            }
+            // 缓存例句数据（翻面时直接使用，无需再请求后端）
+            cachedSentenceData = {
+                sentence: data.sentence,
+                translation: data.translation,
+                keyword: data.keyword,
+                mode: 'target',
+            };
+            // 重渲染正面例句
+            renderSentenceCard(document.getElementById('contextflow-content'), {
+                sentence: data.sentence,
+                translation: data.translation,
+                keyword: data.keyword,
+                showTranslation: false,
+                mode: 'target',
+            });
+            // 轮询补上例句后自动朗读单词
+            setTimeout(() => {
+                const btn = document.getElementById('tts-word');
+                if (btn && !btn.classList.contains('loading')) { btn.click(); }
+            }, 300);
         }
     } catch (e) {
         console.error('[ContextFlow] sentence poll error:', e);

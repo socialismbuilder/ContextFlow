@@ -144,35 +144,94 @@ body {
 }
 .card-content a { color: rgba(255, 255, 255, 0.7) !important; }
 
-/* 强制缩小注入的卡片 HTML 字体，与 card_web.html 一致 */
-.card-content .label {
-    font-size: 10px !important;
-    margin-bottom: 3px !important;
+/* ── ContextFlow 例句卡片（前端自行渲染，限定在 .cf-sentence-card 命名空间，
+     不污染原始 Anki 卡片的 .label/.card-text）────────────────── */
+.cf-sentence-card .label {
+    font-size: 10px;
+    color: rgba(255, 255, 255, 0.35);
+    margin-bottom: 3px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
 }
-.card-content .card-text {
-    font-size: 15px !important;
-    line-height: 1.45 !important;
-    margin-bottom: 6px !important;
+.cf-sentence-card .card-text {
+    font-size: 15px;
+    line-height: 1.45;
+    margin-bottom: 6px;
+    color: rgba(255, 255, 255, 0.9);
 }
-.card-content .card-group {
-    padding: 10px 12px !important;
-    padding-bottom: 32px !important;
-    margin-bottom: 8px !important;
+.cf-sentence-card .highlight {
+    border-radius: 4px;
+    background-color: rgba(255, 140, 140, 0.5);
+    padding: 1px 3px;
 }
-.card-content .original-card-text {
-    font-size: 13px !important;
+.cf-sentence-card .translation-placeholder-line {
+    height: 10px;
+    width: 80%;
+    background: rgba(255, 255, 255, 0.06);
+    border-radius: 5px;
+    margin: 0 0 4px 0;
 }
-.card-content .tts-btn {
-    font-size: 10px !important;
-    padding: 2px 7px !important;
+.cf-sentence-card .translation-placeholder-line:last-child {
+    width: 55%;
+    margin: 0;
 }
-.card-content .tts-btn-group {
-    gap: 4px !important;
+.cf-sentence-card .tts-btn-group {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    margin-top: 6px;
+    justify-content: flex-end;
 }
-.card-content .translation-placeholder-line {
-    height: 10px !important;
-    margin-bottom: 4px !important;
+.cf-sentence-card .tts-btn-group .tts-right {
+    display: flex;
+    gap: 4px;
+    margin-left: auto;
 }
+.cf-sentence-card .refresh-btn svg {
+    display: block;
+    font-size: 11px;
+}
+.cf-sentence-card .refresh-btn.spinning svg {
+    animation: cf-spin 0.7s linear infinite;
+}
+.cf-sentence-card .tts-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    padding: 2px 7px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 5px;
+    background: rgba(255, 255, 255, 0.05);
+    cursor: pointer;
+    font-size: 10px;
+    color: rgba(255, 255, 255, 0.4);
+    user-select: none;
+    transition: background 0.15s;
+}
+.cf-sentence-card .tts-btn:active {
+    background: rgba(255, 255, 255, 0.12);
+}
+.cf-sentence-card .tts-btn.loading {
+    opacity: 0.5;
+    pointer-events: none;
+}
+.cf-sentence-card .tts-btn.loading .tts-label {
+    display: none;
+}
+.cf-sentence-card .tts-btn.loading::after {
+    content: '';
+    display: inline-block;
+    width: 10px;
+    height: 10px;
+    border: 2px solid currentColor;
+    border-top-color: transparent;
+    border-radius: 50%;
+    animation: cf-spin 0.6s linear infinite;
+}
+@keyframes cf-spin {
+    to { transform: rotate(360deg); }
+}
+
 .card-content img {
     max-width: 100%;
     height: auto;

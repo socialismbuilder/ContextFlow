@@ -11,3 +11,4 @@ pyproject.toml
 .venv/
 *.pyc
 *.pyo
+.claude/

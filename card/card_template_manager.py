@@ -105,67 +105,6 @@ def _fill_template(template: str, sentence: str, translation: str,
     return html
 
 
-def _fill_web_template(template: str, sentence: str, translation: str,
-                       original_card: str = "", keyword: str = "") -> str:
-    """填充 Web 端模板，TTS 按钮使用 JS playTTS() 而非 pycmd。"""
-
-    def strip_html(html_text: str) -> str:
-        text = re.sub(r'<[^>]+>', '', html_text)
-        return " ".join(text.split())
-
-    def escape_js(text: str) -> str:
-        return text.replace("'", "\\'").replace('"', '&quot;')
-
-    def clean_word(kw: str) -> str:
-        word = re.sub(r'[（(].*?[）)]', '', kw).strip()
-        return word if word else kw
-
-    processed_sentence = process_highlight(sentence)
-    processed_translation = process_highlight(translation)
-    sentence_text = escape_js(strip_html(processed_sentence))
-
-    if keyword:
-        word_text = escape_js(clean_word(keyword))
-        word_button = (
-            f'<div class="tts-btn" id="tts-word" '
-            f'onclick="this.classList.add(\'loading\');playTTS(\'{word_text}\')">'
-            f'<span class="tts-label">朗读单词</span></div>'
-        )
-        # 刷新例句按钮（仅目标牌组，置于按钮组左侧）
-        refresh_button = (
-            '<div class="tts-btn refresh-btn" id="refresh-btn" '
-            'onclick="refreshSentence()" title="重新生成例句">'
-            '<svg xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" '
-            'viewBox="0 0 24 24">'
-            '<path d="M0 0h24v24H0z" fill="none"/>'
-            '<path fill="currentColor" d="M12.077 19q-2.931 0-4.966-2.033q-2.034-2.034-2.034-4.964t2.034-4.966T12.077 5q1.783 0 3.339.847q1.555.847 2.507 2.365V5.5q0-.213.144-.356T18.424 5t.356.144t.143.356v3.923q0 .343-.232.576t-.576.232h-3.923q-.212 0-.356-.144t-.144-.357t.144-.356t.356-.143h3.2q-.78-1.496-2.197-2.364Q13.78 6 12.077 6q-2.5 0-4.25 1.75T6.077 12t1.75 4.25t4.25 1.75q1.787 0 3.271-.968q1.485-.969 2.202-2.573q.085-.196.274-.275q.19-.08.388-.013q.211.067.28.275t-.015.404q-.833 1.885-2.56 3.017T12.077 19"/>'
-            '</svg></div>'
-        )
-    else:
-        word_button = ""
-        refresh_button = ""
-
-    if original_card:
-        original_area = (
-            '<div style="margin-top: 10px;">'
-            '<div class="label">原始卡片</div>'
-            f'<div class="original-card-text">{original_card}</div>'
-            '</div>'
-        )
-    else:
-        original_area = ""
-
-    html = template
-    html = html.replace("{FONT_CSS}", "")
-    html = html.replace("{SENTENCE}", processed_sentence)
-    html = html.replace("{SENTENCE_TEXT}", sentence_text)
-    html = html.replace("{WORD_BUTTON}", word_button)
-    html = html.replace("{REFRESH_BUTTON}", refresh_button)
-    html = html.replace("{TRANSLATION}", processed_translation)
-    html = html.replace("{ORIGINAL_CARD_AREA}", original_area)
-    return html
-
-
 def get_processed_front_html(sentence: str, keyword: str = "") -> str:
     """Build front HTML: sentence + translation placeholder + TTS buttons."""
     template = _load_template("card.html")
@@ -182,26 +121,6 @@ def get_processed_back_html(sentence: str, translation: str,
     template = _load_template("card.html")
     return _fill_template(template, sentence, translation,
                           original_card=original_html, keyword=keyword)
-
-
-# ── Web 专用模板 ──────────────────────────────────────
-
-def get_web_front_html(sentence: str, keyword: str = "") -> str:
-    """Web 端正面：小字体，TTS 按钮调用 JS API。"""
-    template = _load_template("card_web.html")
-    placeholder = (
-        '<div class="translation-placeholder-line"></div>'
-        '<div class="translation-placeholder-line"></div>'
-    )
-    return _fill_web_template(template, sentence, placeholder, keyword=keyword)
-
-
-def get_web_back_html(sentence: str, translation: str,
-                      original_html: str = "", keyword: str = "") -> str:
-    """Web 端背面：小字体，TTS 按钮调用 JS API。"""
-    template = _load_template("card_web.html")
-    return _fill_web_template(template, sentence, translation,
-                              original_card=original_html, keyword=keyword)
 
 
 def get_card_template_front() -> str:
