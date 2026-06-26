@@ -12,3 +12,8 @@ pyproject.toml
 *.pyc
 *.pyo
 .claude/
+
+# Vue 前端构建工具链（仅依赖不进版本库，源码 web-src/ 进 git）
+web-src/node_modules/
+web-src/package-lock.json
+web-src/pnpm-lock.yaml

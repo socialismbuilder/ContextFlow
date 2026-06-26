@@ -1,7 +1,16 @@
 import os
+import sys
 import json
 import zipfile
 import pathspec
+
+# Windows 控制台默认 GBK，打印 emoji（如 ✅）会 UnicodeEncodeError；
+# 把标准输出重配为 UTF-8，让脚本在任何 locale 下都能输出完整信息。
+try:
+    sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+    sys.stderr.reconfigure(encoding='utf-8', errors='replace')
+except Exception:
+    pass
 
 # --- 配置 ---
 MANIFEST_FILE = 'manifest.json'
@@ -23,6 +32,15 @@ ALWAYS_IGNORE = [
     SCRIPT_NAME,
 ]
 
+# --- 已纳入 git 但不应进入安装包的文件/目录 ---
+# 这些文件是仓库资产（文档、前端源码），但运行时无用，排除以减小 .ankiaddon 体积。
+PACKAGE_ONLY_EXCLUDE = [
+    'README.md',            # 文档
+    'DESIGN_PHILOSOPHY.md', # 设计文档
+    'picture/',             # README 截图（约 872K）
+    'web-src/',             # Vue 前端源码（构建产物已在 web/static/）
+]
+
 def get_addon_info():
     """从 manifest.json 读取插件信息"""
     try:
@@ -39,8 +57,14 @@ def get_addon_info():
         return None, None
 
 def get_gitignore_spec():
-    """读取 .gitignore 文件并合并总是忽略的规则"""
-    all_patterns = ALWAYS_IGNORE.copy()
+    """读取 .gitignore 文件并合并所有忽略规则。
+
+    规则来源（合并为三组）：
+      1. ALWAYS_IGNORE        —— 总是忽略（.git、__pycache__、release 等）
+      2. PACKAGE_ONLY_EXCLUDE —— 已纳 git 但不进安装包（文档、picture、web-src 源码）
+      3. .gitignore           —— 版本库自身的忽略规则（含 node_modules 等）
+    """
+    all_patterns = ALWAYS_IGNORE + PACKAGE_ONLY_EXCLUDE
     if os.path.exists(GITIGNORE_FILE):
         print(f"正在读取 '{GITIGNORE_FILE}' 中的忽略规则...")
         with open(GITIGNORE_FILE, 'r', encoding='utf-8') as f:

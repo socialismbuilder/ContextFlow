@@ -1,0 +1,14 @@
+{
+  "name": "contextflow-web",
+  "version": "1.0.0",
+  "private": true,
+  "description": "ContextFlow 手机复习前端（Vue 3 + esbuild 构建，产物输出到 web/static）",
+  "scripts": {
+    "build": "node build.mjs"
+  },
+  "devDependencies": {
+    "esbuild": "^0.24.0",
+    "esbuild-plugin-vue3": "^0.4.0",
+    "vue": "^3.5.0"
+  }
+}

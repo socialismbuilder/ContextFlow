@@ -34,6 +34,16 @@ body {
     flex-direction: column;
 }
 
+/* Vue 挂载根：必须和 body 一样成为 flex 列容器并铺满高度，
+   否则内部 #card-area 的 flex:1 / #origin-side 的 overflow:auto 会失效
+   （卡片背面超长时无法滚动、答题按钮被顶出屏幕）。 */
+#app {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-height: 0;
+}
+
 .hidden { display: none !important; }
 
 /* ── 状态栏 ────────────────────────────────────────── */
@@ -567,9 +577,8 @@ body {
     left: 0;
     right: 0;
     bottom: 0;
+    top: 12vh; /* 顶部留空隙，体现"上弹卡片"而非全屏；高度由 top/bottom 自动撑出，避免 vh 在移动 webview 偏大导致顶部溢出 */
     z-index: 100;
-    height: 85vh; /* 默认高度；打开时由 JS 按档位覆盖 */
-    max-height: 90vh;
     background: #1a1d26;
     border-top-left-radius: 18px;
     border-top-right-radius: 18px;
@@ -577,7 +586,7 @@ body {
     display: flex;
     flex-direction: column;
     transform: translateY(100%);
-    transition: transform .3s ease, height .25s ease;
+    transition: transform .3s ease;
     padding-bottom: var(--safe-bottom);
 }
 .ai-sheet.open { transform: translateY(0); }
@@ -594,11 +603,19 @@ body {
 }
 .ai-sheet-handle:active { cursor: grabbing; }
 .ai-handle-bar {
-    width: 40px;
-    height: 4px;
-    border-radius: 2px;
-    background: rgba(255, 255, 255, 0.28);
+    /* 锚定抽屉自身宽度（父级 .ai-sheet 的 content-box），不依赖视口。
+       SVG 已设 preserveAspectRatio="none"，width/height 独立生效：
+         - width  控制宽度（占抽屉宽的比例，或 px；max-width 封顶）
+         - height 控制扁度（越小越扁，不影响宽度）
+       两者互不约束，可自由拉到任意宽扁比例。 */
+    width: 25%;
+    height: 12px;
+    max-width: 45px;
+    flex-shrink: 0;
+    color: rgba(255, 255, 255, 0.45);
+    transition: color .15s;
 }
+.ai-sheet-handle:active .ai-handle-bar { color: rgba(255, 255, 255, 0.7); }
 
 .ai-mode-bar {
     flex-shrink: 0;
