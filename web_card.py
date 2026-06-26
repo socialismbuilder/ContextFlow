@@ -492,6 +492,7 @@ def undo_card(mw) -> dict:
 
 def get_status(mw) -> dict:
     """获取当前状态信息。"""
+    from .config_manager import get_config
     deck_id = mw.col.decks.selected()
     deck_name = mw.col.decks.name(deck_id)
     counts = mw.col.sched.counts()
@@ -501,6 +502,7 @@ def get_status(mw) -> dict:
         "new": counts[0],
         "learning": counts[1],
         "review": counts[2],
+        "learning_language": get_config().get("learning_language", "英语"),
     }
 
 

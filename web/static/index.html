@@ -104,6 +104,35 @@
         <div id="fab-indicator" class="fab-indicator hidden"></div>
     </div>
 
+    <!-- AI 解释底部抽屉 -->
+    <div id="ai-sheet-backdrop" class="hidden"></div>
+    <div id="ai-sheet" class="ai-sheet">
+        <div class="ai-sheet-handle" id="ai-sheet-handle">
+            <div class="ai-handle-bar"></div>
+        </div>
+
+        <div id="ai-mode-bar" class="ai-mode-bar hidden">
+            <button class="ai-mode-btn active" data-mode="keyword" onclick="aiSwitchMode('keyword')">解释关键词</button>
+            <button class="ai-mode-btn" data-mode="select" onclick="aiSwitchMode('select')">划词选择</button>
+        </div>
+
+        <div id="ai-token-area" class="ai-token-area hidden"></div>
+
+        <div id="ai-selected-bar" class="ai-selected-bar hidden">
+            <span class="ai-selected-label">选中：</span>
+            <span id="ai-selected-text" class="ai-selected-text"></span>
+            <button id="ai-explain-btn" class="ai-explain-btn" onclick="aiExplainSelection()">解释</button>
+        </div>
+
+        <div id="ai-conversation" class="ai-conversation"></div>
+
+        <div class="ai-input-bar">
+            <textarea id="ai-input" class="ai-input" rows="1" placeholder="继续提问... (Enter发送, Shift+Enter换行)"></textarea>
+            <button id="ai-send-btn" class="ai-send-btn" onclick="aiSendFollowup()">发送</button>
+        </div>
+    </div>
+
+    <script src="/static/marked.min.js"></script>
     <script src="/static/app.js"></script>
 </body>
 </html>

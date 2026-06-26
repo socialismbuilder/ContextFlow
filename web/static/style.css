@@ -550,3 +550,228 @@ body {
     pointer-events: none;
     border: 1px solid rgba(255, 255, 255, 0.1);
 }
+
+/* ── AI 解释抽屉 ─────────────────────────────────────── */
+#ai-sheet-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.5);
+    z-index: 90;
+    opacity: 0;
+    transition: opacity .3s;
+}
+#ai-sheet-backdrop.show { opacity: 1; }
+
+.ai-sheet {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 100;
+    height: 85vh; /* 默认高度；打开时由 JS 按档位覆盖 */
+    max-height: 90vh;
+    background: #1a1d26;
+    border-top-left-radius: 18px;
+    border-top-right-radius: 18px;
+    box-shadow: 0 -8px 32px rgba(0, 0, 0, 0.5);
+    display: flex;
+    flex-direction: column;
+    transform: translateY(100%);
+    transition: transform .3s ease, height .25s ease;
+    padding-bottom: var(--safe-bottom);
+}
+.ai-sheet.open { transform: translateY(0); }
+
+.ai-sheet-handle {
+    position: relative;
+    flex-shrink: 0;
+    padding: 8px 0 6px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    cursor: grab;
+    touch-action: none; /* 手柄拖动不触发页面滚动 */
+}
+.ai-sheet-handle:active { cursor: grabbing; }
+.ai-handle-bar {
+    width: 40px;
+    height: 4px;
+    border-radius: 2px;
+    background: rgba(255, 255, 255, 0.28);
+}
+
+.ai-mode-bar {
+    flex-shrink: 0;
+    display: flex;
+    gap: 8px;
+    padding: 4px 14px 8px;
+}
+.ai-mode-btn {
+    flex: 1;
+    background: var(--surface);
+    color: var(--text-mid);
+    border: 1px solid var(--glass-border);
+    border-radius: 10px;
+    padding: 8px 0;
+    font-size: 14px;
+    cursor: pointer;
+}
+.ai-mode-btn.active {
+    background: var(--good);
+    color: #0f1117;
+    border-color: transparent;
+    font-weight: 600;
+}
+
+.ai-token-area {
+    flex-shrink: 0;
+    padding: 4px 12px;
+    overflow: visible;
+    line-height: 1.5;
+    -webkit-user-select: none;
+    user-select: none;
+    /* 划词由内部 token 处理，阻止页面滚动干扰拖动选择 */
+    touch-action: none;
+}
+.ai-token {
+    display: inline-block;
+    padding: 1px 3px;
+    margin: 0;
+    border-radius: 5px;
+    color: var(--text);
+    font-size: 14px;
+    cursor: pointer;
+    transition: background .1s;
+}
+.ai-token.selected {
+    background: var(--good);
+    color: #0f1117;
+}
+
+.ai-selected-bar {
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 14px;
+    background: var(--surface);
+    border-top: 1px solid var(--glass-border);
+    border-bottom: 1px solid var(--glass-border);
+}
+.ai-selected-label { color: var(--text-dim); font-size: 13px; flex-shrink: 0; }
+.ai-selected-text {
+    flex: 1;
+    color: var(--text);
+    font-size: 15px;
+    font-weight: 600;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.ai-explain-btn {
+    flex-shrink: 0;
+    background: var(--good);
+    color: #0f1117;
+    border: none;
+    border-radius: 10px;
+    padding: 8px 18px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+}
+.ai-explain-btn:disabled { opacity: .5; }
+
+.ai-conversation {
+    flex: 1;
+    overflow-y: auto;
+    padding: 12px 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    -webkit-overflow-scrolling: touch;
+}
+.ai-bubble {
+    max-width: 85%;
+    padding: 10px 13px;
+    border-radius: 14px;
+    font-size: 14px;
+    line-height: 1.6;
+    word-break: break-word;
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid var(--glass-border);
+}
+.ai-bubble.user {
+    align-self: flex-end;
+    background: rgba(106, 76, 147, 0.28);
+    color: var(--text);
+    border-bottom-right-radius: 4px;
+    white-space: pre-wrap;
+}
+.ai-bubble.ai {
+    align-self: flex-start;
+    background: var(--glass);
+    color: var(--text);
+    border-bottom-left-radius: 4px;
+}
+.ai-bubble.ai p { margin: 0 0 8px; }
+.ai-bubble.ai p:last-child { margin-bottom: 0; }
+.ai-bubble.ai ul, .ai-bubble.ai ol { margin: 4px 0 8px; padding-left: 20px; }
+.ai-bubble.ai li { margin: 2px 0; }
+.ai-bubble.ai strong { color: #fff; }
+.ai-bubble.ai code {
+    background: rgba(255, 255, 255, 0.1); color: #e8e8e8; padding: 1px 5px;
+    border-radius: 4px; font-size: 13px;
+}
+.ai-bubble.ai pre {
+    background: rgba(0, 0, 0, 0.35); color: #f0f0f0; padding: 10px;
+    border-radius: 8px; overflow-x: auto; margin: 6px 0;
+    border: 1px solid var(--glass-border);
+}
+.ai-bubble.ai pre code { background: transparent; padding: 0; color: inherit; }
+.ai-bubble.ai table { border-collapse: collapse; width: 100%; margin: 6px 0; }
+.ai-bubble.ai th, .ai-bubble.ai td { border: 1px solid var(--glass-border); padding: 4px 8px; }
+.ai-bubble.ai th { background: rgba(255, 255, 255, 0.08); }
+.ai-bubble.ai a { color: #8ab4ff; }
+.ai-bubble.error { align-self: center; background: rgba(255,80,80,.15); color: #ff9b9b; }
+
+.ai-input-bar {
+    flex-shrink: 0;
+    display: flex;
+    gap: 8px;
+    padding: 8px 14px calc(8px + var(--safe-bottom));
+    border-top: 1px solid var(--glass-border);
+    background: #1a1d26;
+}
+.ai-input {
+    flex: 1;
+    resize: none;
+    max-height: 100px;
+    background: var(--surface);
+    color: var(--text);
+    border: 1px solid var(--glass-border);
+    border-radius: 12px;
+    padding: 10px 12px;
+    font-size: 14px;
+    line-height: 1.4;
+    font-family: inherit;
+}
+.ai-send-btn {
+    flex-shrink: 0;
+    background: var(--good);
+    color: #0f1117;
+    border: none;
+    border-radius: 12px;
+    padding: 0 18px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    align-self: stretch;
+}
+.ai-send-btn:disabled { opacity: .5; }
+
+/* 卡片上的 AI 解释入口按钮 */
+.tts-btn.ai-explain-entry {
+    background: rgba(106, 76, 147, 0.35);
+}
+.tts-btn.ai-explain-entry .tts-label { color: #c9a7ff; }

@@ -37,7 +37,8 @@ AI_BUBBLE_STYLE = "QTextEdit { background-color: #f0f0f0; color: #1e1e1e; border
 
 prompt = """你是ContextFlow软件的语言学习助手，你将扮演一位资深的语言学家和友善的语言导师。你的任务是为语言学习者提供精准、简洁且高度相关的词汇/短语解释。
 
-除例句外，输出篇幅控制在约200-300字。
+{examples_length_clause}
+你的核心原则是**灵活应变**。你需要首先判断用户输入的类型，然后选择最合适的解释策略，而不是死板地遵循一个固定模板。
 
 你的核心原则是**灵活应变**。你需要首先判断用户输入的类型，然后选择最合适的解释策略，而不是死板地遵循一个固定模板。
 
@@ -79,7 +80,18 @@ prompt = """你是ContextFlow软件的语言学习助手，你将扮演一位资
 
 ---
 
-### 第三步：应用实例
+{examples_section}
+
+你的回答应该像一位经验丰富的老师，既有深度，又懂得因材施教，直击要点。现在，请根据这个新的指导原则，为用户服务。
+
+完成以上步骤后，等待用户的追问。对于随后的追问，不必遵循上述流程，完全灵活的处理。
+
+{examples_tool_clause}
+"""
+
+
+# 例句生成段（含 JSON 输出要求）。web 端不启用时整段省略。
+_EXAMPLES_SECTION = """### 第三步：应用实例
 最后，根据用户的学习要求生成 2-3 个高质量例句，来展示相关用法。
 请确保例句和翻译使用以下JSON格式输出，一个例句翻译对就是一个JSON对象，这一部分必须放在段落最后且无额外内容或注释，以便系统识别：
 
@@ -95,14 +107,37 @@ prompt = """你是ContextFlow软件的语言学习助手，你将扮演一位资
 {{
   "sentence": "例句原文",
   "translation": "例句翻译"
-}}```
+}}```"""
 
-你的回答应该像一位经验丰富的老师，既有深度，又懂得因材施教，直击要点。现在，请根据这个新的指导原则，为用户服务。
 
-完成以上步骤后，等待用户的追问。对于随后的追问，不必遵循上述流程，完全灵活的处理。
+def build_prompt(
+    sentence: str,
+    word_to_explain: str,
+    vocab_level: str,
+    learning_goal: str,
+    difficulty_level: str,
+    sentence_length_desc: str,
+    include_examples: bool = True,
+) -> str:
+    """构建系统提示词。
 
-例句生成工具在用户追问时依然可以调用，但仅在用户明确要求更多例句，或者你认为提供额外例句能显著帮助用户理解时使用，避免显得刻板和冗余。
-"""
+    include_examples=True（桌面端默认）：含第三步例句生成 + JSON 输出。
+    include_examples=False（web 端）：纯解释，不含例句段。
+    """
+    return prompt.format(
+        sentence=sentence,
+        word_to_explain=word_to_explain,
+        vocab_level=vocab_level,
+        learning_goal=learning_goal,
+        difficulty_level=difficulty_level,
+        sentence_length_desc=sentence_length_desc,
+        examples_length_clause=("除例句外，输出篇幅控制在约200-300字。"
+                                if include_examples else "输出篇幅控制在约200-300字。"),
+        examples_section=_EXAMPLES_SECTION if include_examples else "",
+        examples_tool_clause=("例句生成工具在用户追问时依然可以调用，但仅在用户明确要求更多例句，"
+                              "或者你认为提供额外例句能显著帮助用户理解时使用，避免显得刻板和冗余。"
+                              if include_examples else ""),
+    )
 
 
 # 【修改】重新引入创建独立UI组件的逻辑
@@ -374,13 +409,14 @@ class AIExplanationDialog(QDialog):
         difficulty_level = config.get("difficulty_level", DEFAULT_CONFIG["difficulty_level"])
         sentence_length_desc = config.get("sentence_length_desc", DEFAULT_CONFIG["sentence_length_desc"])
 
-        system_prompt = prompt.format(
+        system_prompt = build_prompt(
             sentence=self.sentence,
             word_to_explain=self.word_to_explain,
             vocab_level=vocab_level,
             learning_goal=learning_goal,
             difficulty_level=difficulty_level,
-            sentence_length_desc=sentence_length_desc
+            sentence_length_desc=sentence_length_desc,
+            include_examples=True,
         )
         
         # 检查模型名称是否包含qwen3，如果是则在提示词末尾添加/no_think标签

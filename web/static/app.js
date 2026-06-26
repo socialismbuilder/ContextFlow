@@ -7,6 +7,7 @@ let waitTimer = null;
 let sentencePollTimer = null;
 let cachedOriginHtml = null;       // 缓存原始卡片背面 HTML
 let cachedSentenceData = null;     // 缓存例句数据 {sentence, translation, keyword, mode}（背面时重渲染翻译）
+let learningLanguage = '英语';      // 当前学习语言（决定 AI 选词分词规则），由 /api/status 提供
 
 // ── 初始化 ───────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', () => {
@@ -21,6 +22,7 @@ async function fetchStatus() {
         const resp = await fetch('/api/status');
         const data = await resp.json();
         document.getElementById('deck-name').textContent = data.deck_name || '未知牌组';
+        if (data.learning_language) learningLanguage = data.learning_language;
         updateCounts(data.new || 0, data.learning || 0, data.review || 0, currentActiveType);
     } catch (e) {
         console.error('[ContextFlow] 获取状态失败:', e);
@@ -496,6 +498,13 @@ function renderSentenceCard(container, opts) {
     });
     ttsRight.appendChild(sentBtn);
 
+    // AI 解释入口（target / saved 都有）
+    const aiBtn = document.createElement('div');
+    aiBtn.className = 'tts-btn ai-explain-entry';
+    aiBtn.innerHTML = '<span class="tts-label">AI 解释</span>';
+    aiBtn.addEventListener('click', () => openAiSheet(sentenceText, keyword, mode));
+    ttsRight.appendChild(aiBtn);
+
     btnGroup.appendChild(ttsRight);
     root.appendChild(btnGroup);
 
@@ -911,4 +920,496 @@ async function refreshSentence() {
             Math.min(fabPos.y, window.innerHeight - 56)
         );
     });
+})();
+
+// ── AI 解释抽屉 ─────────────────────────────────────────
+(function() {
+    // 无空格语言：逐字分（汉语/日语/韩语等）。其余按空格+标点切。
+    const NO_SPACE_LANGS = ['汉语', '中文', '日语', '韩语', '阿拉伯语'];
+
+    // 状态
+    let sheetSentence = '';        // 当前句子的纯文本
+    let sheetKeyword = '';         // target 模式的关键词
+    let sheetMode = 'plain';       // target / saved
+    let aiMode = 'keyword';        // keyword（直接解释关键词）/ select（划词）
+    let tokens = [];               // [{text}]
+    let selStart = -1, selEnd = -1;
+    let dragAnchor = -1;           // 划词按下时的起点 token 下标
+    let didDrag = false;
+    let history = [];              // 追问历史 [{role, content}]
+    let streaming = false;
+    let currentAiBubble = null;
+    let currentAiRaw = '';
+
+    const sheet = document.getElementById('ai-sheet');
+    const backdrop = document.getElementById('ai-sheet-backdrop');
+    const tokenArea = document.getElementById('ai-token-area');
+    const modeBar = document.getElementById('ai-mode-bar');
+    const selectedBar = document.getElementById('ai-selected-bar');
+    const selectedText = document.getElementById('ai-selected-text');
+    const explainBtn = document.getElementById('ai-explain-btn');
+    const conversation = document.getElementById('ai-conversation');
+    const inputEl = document.getElementById('ai-input');
+    const sendBtn = document.getElementById('ai-send-btn');
+
+    function isNoSpaceLang(lang) {
+        return NO_SPACE_LANGS.some(l => (lang || '').includes(l));
+    }
+
+    function tokenize(text, language) {
+        if (!text) return [];
+        const arr = [];
+        if (isNoSpaceLang(language)) {
+            // 逐字，过滤空白
+            for (const ch of [...text]) {
+                if (/\s/.test(ch)) continue;
+                arr.push({ text: ch });
+            }
+        } else {
+            // 按空格切；每个 token 内可能附着前后标点（保留原样，便于显示与朗读）
+            const parts = text.match(/\S+/g) || [];
+            for (const p of parts) arr.push({ text: p });
+        }
+        return arr;
+    }
+
+    function renderTokens() {
+        tokenArea.innerHTML = '';
+        tokens.forEach((tok, i) => {
+            const span = document.createElement('span');
+            span.className = 'ai-token';
+            span.textContent = tok.text;
+            span.dataset.idx = i;
+            if (i >= selStart && i <= selEnd && selStart >= 0) {
+                span.classList.add('selected');
+            }
+            tokenArea.appendChild(span);
+        });
+    }
+
+    function tokenIdxFromPoint(clientX, clientY) {
+        const el = document.elementFromPoint(clientX, clientY);
+        if (el && el.classList.contains('ai-token')) {
+            return parseInt(el.dataset.idx, 10);
+        }
+        return -1;
+    }
+
+    // 从事件 target 取 token 下标（touchstart/mousedown 时 target 比 elementFromPoint 可靠，
+    // 后者会被手指遮挡返回底层元素，导致单击选不中）
+    function tokenIdxFromTarget(target) {
+        if (target && target.classList && target.classList.contains('ai-token')) {
+            return parseInt(target.dataset.idx, 10);
+        }
+        return -1;
+    }
+
+    function highlightRange(s, e) {
+        const spans = tokenArea.querySelectorAll('.ai-token');
+        spans.forEach(sp => {
+            const i = parseInt(sp.dataset.idx, 10);
+            sp.classList.toggle('selected', s >= 0 && i >= s && i <= e);
+        });
+    }
+
+    function getSelectionText() {
+        if (selStart < 0 || selEnd < 0) return '';
+        return tokens.slice(selStart, selEnd + 1).map(t => t.text).join(
+            isNoSpaceLang(learningLanguage) ? '' : ' '
+        );
+    }
+
+    function updateSelectedBar() {
+        const txt = getSelectionText();
+        if (txt) {
+            selectedText.textContent = txt;
+            selectedBar.classList.remove('hidden');
+            explainBtn.disabled = streaming;
+        } else {
+            selectedBar.classList.add('hidden');
+        }
+    }
+
+    // ── 选词事件：单击与拖动分离 ──────────────────────
+    // 单击选词用 click（target 永远可靠，不受手指遮挡影响）；
+    // 拖动划词用 touchmove/mousemove，拖动发生时取消随后的 click（didDrag 标志）。
+
+    function handleClick(e) {
+        if (didDrag) { didDrag = false; return; } // 刚发生过拖动，吞掉这次 click
+        const idx = tokenIdxFromTarget(e.target);
+        if (idx < 0) return;
+        // 单击：选中该 token（若在已选区间内则收缩到更长段）
+        if (selStart >= 0 && idx >= selStart && idx <= selEnd) {
+            const leftLen = idx - selStart;
+            const rightLen = selEnd - idx;
+            if (leftLen === 0 && rightLen === 0) {
+                selStart = -1; selEnd = -1;
+            } else if (leftLen >= rightLen) {
+                selEnd = idx - 1;
+            } else {
+                selStart = idx + 1;
+            }
+        } else {
+            selStart = idx;
+            selEnd = idx;
+        }
+        highlightRange(selStart, selEnd);
+        updateSelectedBar();
+    }
+
+    // 触屏拖动划词
+    tokenArea.addEventListener('touchstart', (e) => {
+        const idx = tokenIdxFromTarget(e.target);
+        if (idx < 0) return;
+        didDrag = false;
+        dragAnchor = idx;
+    }, { passive: true });
+    tokenArea.addEventListener('touchmove', (e) => {
+        if (dragAnchor < 0) return;
+        e.preventDefault();
+        const t = e.touches[0];
+        const idx = tokenIdxFromPoint(t.clientX, t.clientY);
+        if (idx < 0) return;
+        didDrag = true;
+        selStart = Math.min(dragAnchor, idx);
+        selEnd = Math.max(dragAnchor, idx);
+        highlightRange(selStart, selEnd);
+    }, { passive: false });
+    tokenArea.addEventListener('touchend', () => {
+        if (didDrag) updateSelectedBar();
+        // didDrag 保留，交给随之而来的 click 判定吞掉；click 后会重置
+        dragAnchor = -1;
+    });
+    // click 处理单击（touchend 后浏览器会合成 click）
+    tokenArea.addEventListener('click', handleClick);
+
+    // 鼠标（桌面调试）：mousedown 起点 + mousemove 拖动 + mouseup/click 收尾
+    tokenArea.addEventListener('mousedown', (e) => {
+        const idx = tokenIdxFromTarget(e.target);
+        if (idx < 0) return;
+        didDrag = false;
+        dragAnchor = idx;
+    });
+    document.addEventListener('mousemove', (e) => {
+        if (dragAnchor < 0) return;
+        const idx = tokenIdxFromPoint(e.clientX, e.clientY);
+        if (idx < 0) return;
+        if (idx !== dragAnchor) didDrag = true;
+        selStart = Math.min(dragAnchor, idx);
+        selEnd = Math.max(dragAnchor, idx);
+        highlightRange(selStart, selEnd);
+    });
+    document.addEventListener('mouseup', () => {
+        if (didDrag) updateSelectedBar();
+        dragAnchor = -1;
+        // mouseup 后浏览器也会触发 click，由 handleClick 统一处理单击 / 吞掉拖动
+    });
+
+    // ── 抽屉开关与模式 ──────────────────────────────────
+
+    function setAiMode(mode) {
+        aiMode = mode;
+        modeBar.querySelectorAll('.ai-mode-btn').forEach(b => {
+            b.classList.toggle('active', b.dataset.mode === mode);
+        });
+        if (mode === 'keyword') {
+            tokenArea.classList.add('hidden');
+            selectedBar.classList.remove('hidden');
+            selectedText.textContent = sheetKeyword || '(无关键词)';
+            explainBtn.disabled = streaming || !sheetKeyword;
+        } else {
+            // select 划词模式
+            tokenArea.classList.remove('hidden');
+            updateSelectedBar();
+        }
+    }
+
+    function openAiSheet(sentence, keyword, mode) {
+        sheetSentence = sentence || '';
+        sheetKeyword = keyword || '';
+        sheetMode = mode || 'saved';
+        tokens = tokenize(sheetSentence, learningLanguage);
+        selStart = -1; selEnd = -1;
+        history = [];
+        streaming = false;
+        currentAiBubble = null;
+        currentAiRaw = '';
+        conversation.innerHTML = '';
+        inputEl.value = '';
+
+        renderTokens();
+        openAtMax(); // 打开时回到最大档高度
+
+        // target 模式提供两种入口；saved 只能划词
+        if (sheetMode === 'target' && sheetKeyword) {
+            modeBar.classList.remove('hidden');
+            setAiMode('keyword');   // 默认选中"解释关键词"，显示 keyword + 解释按钮，等用户点
+            backdrop.classList.add('show');
+            sheet.classList.add('open');
+        } else {
+            modeBar.classList.add('hidden');
+            setAiMode('select');
+            backdrop.classList.add('show');
+            sheet.classList.add('open');
+        }
+    }
+
+    function closeAiSheet() {
+        sheet.classList.remove('open');
+        backdrop.classList.remove('show');
+        streaming = false; // 中断流式读取循环
+    }
+    backdrop.addEventListener('click', closeAiSheet);
+
+    // ── 手柄拖动：顶端吸附 + 自由高度 ──────────────────
+    // 拖动手柄改变抽屉高度（手柄的屏幕 y 即抽屉顶部位置）。
+    // 松手时按高度判定：
+    //   高度接近最大（≥ 最大-50）→ 吸附到最大
+    //   高度低于半屏阈值          → 关闭
+    //   其他                      → 保持当前高度（自由，不吸附）
+    const handle = document.getElementById('ai-sheet-handle');
+    const SNAP_RANGE = 50; // 距最大高度 50px 内吸附到最大
+    let handleDragging = false;
+
+    function maxSheetHeight() { return Math.round(window.innerHeight * 0.9); }
+    function closeThreshold() { return Math.round(window.innerHeight * 0.5); }
+    function clampHeight(h) {
+        return Math.max(120, Math.min(maxSheetHeight(), h));
+    }
+    function setSheetHeight(h) { sheet.style.height = clampHeight(h) + 'px'; }
+    function openAtMax() { setSheetHeight(maxSheetHeight()); }
+
+    function handleDown() {
+        handleDragging = true;
+        sheet.style.transition = 'none'; // 拖动期间禁用过渡，跟随手指
+    }
+    function handleMove(clientY) {
+        if (!handleDragging) return;
+        setSheetHeight(window.innerHeight - clientY);
+    }
+    function handleUp() {
+        if (!handleDragging) return;
+        handleDragging = false;
+        sheet.style.transition = ''; // 恢复过渡，做吸附/回弹动画
+        const height = sheet.offsetHeight;
+        if (height >= maxSheetHeight() - SNAP_RANGE) {
+            // 接近最大高度 → 吸附到最大
+            setSheetHeight(maxSheetHeight());
+        } else if (height < closeThreshold()) {
+            // 高度低于半屏 → 关闭
+            closeAiSheet();
+        }
+        // 其他情况：保持当前高度（自由）
+    }
+
+    handle.addEventListener('touchstart', () => {
+        handleDown();
+    }, { passive: true });
+    handle.addEventListener('touchmove', (e) => {
+        if (!handleDragging) return;
+        e.preventDefault();
+        handleMove(e.touches[0].clientY);
+    }, { passive: false });
+    handle.addEventListener('touchend', handleUp);
+
+    handle.addEventListener('mousedown', (e) => {
+        handleDown();
+        e.preventDefault();
+    });
+    document.addEventListener('mousemove', (e) => {
+        if (handleDragging) handleMove(e.clientY);
+    });
+    document.addEventListener('mouseup', () => {
+        if (handleDragging) handleUp();
+    });
+
+    // 窗口尺寸变化时重新约束高度
+    window.addEventListener('resize', () => {
+        if (sheet.classList.contains('open')) {
+            setSheetHeight(Math.min(sheet.offsetHeight, maxSheetHeight()));
+        }
+    });
+
+    function aiExplainSelection() {
+        if (streaming) return;
+        const word = aiMode === 'keyword' ? sheetKeyword : getSelectionText();
+        if (!word) return;
+        // 点解释后，选词相关 UI 退场，只留对话区 + 输入栏
+        modeBar.classList.add('hidden');
+        tokenArea.classList.add('hidden');
+        selectedBar.classList.add('hidden');
+        startStream(word, '');
+    }
+
+    function aiSwitchMode(mode) { setAiMode(mode); }
+
+    // ── SSE 流式对话 ────────────────────────────────────
+
+    function addBubble(role, text) {
+        const b = document.createElement('div');
+        b.className = 'ai-bubble ' + (role === 'user' ? 'user' : 'ai');
+        b.textContent = text;
+        conversation.appendChild(b);
+        conversation.scrollTop = conversation.scrollHeight;
+        return b;
+    }
+
+    function renderAiBubble() {
+        if (!currentAiBubble) return;
+        let html = '';
+        try {
+            html = window.marked ? marked.parse(currentAiRaw) : escapeHtml(currentAiRaw);
+        } catch (e) {
+            html = escapeHtml(currentAiRaw);
+        }
+        currentAiBubble.innerHTML = html;
+        conversation.scrollTop = conversation.scrollHeight;
+    }
+
+    function setStreaming(on) {
+        streaming = on;
+        sendBtn.disabled = on;
+        // 解释按钮在流式期间一律禁用；结束后由 updateSelectedBar/setAiMode 重新决定
+        explainBtn.disabled = on;
+        inputEl.placeholder = on ? 'AI 生成中...' : '继续提问... (Enter发送, Shift+Enter换行)';
+    }
+
+    async function startStream(word, userFollowup) {
+        if (streaming) return;
+        if (userFollowup) {
+            addBubble('user', userFollowup);
+            history.push({ role: 'user', content: userFollowup });
+        }
+
+        // 创建 AI 气泡占位
+        currentAiBubble = addBubble('ai', '');
+        currentAiRaw = '';
+        setStreaming(true);
+
+        const body = {
+            sentence: sheetSentence,
+            word: word,
+            history: history,
+        };
+
+        try {
+            const resp = await fetch('/api/ai/chat', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(body),
+            });
+            if (!resp.ok) {
+                const txt = await resp.text();
+                showErrorBubble('请求失败 (' + resp.status + '): ' + txt.slice(0, 200));
+                setStreaming(false);
+                return;
+            }
+
+            const reader = resp.body.getReader();
+            const decoder = new TextDecoder('utf-8');
+            let buffer = '';
+            let fullContent = '';
+
+            while (true) {
+                if (!streaming) break; // 关闭抽屉时中断
+                const { value, done } = await reader.read();
+                if (done) break;
+                buffer += decoder.decode(value, { stream: true });
+
+                // 按 SSE 事件边界 "\n\n" 拆分
+                let idx;
+                while ((idx = buffer.indexOf('\n\n')) >= 0) {
+                    const rawEvent = buffer.slice(0, idx);
+                    buffer = buffer.slice(idx + 2);
+                    handleSseEvent(rawEvent, (delta) => {
+                        currentAiRaw += delta;
+                        fullContent += delta;
+                        renderAiBubble();
+                    });
+                }
+            }
+            // 处理残余
+            if (buffer.trim()) {
+                handleSseEvent(buffer, (delta) => {
+                    currentAiRaw += delta;
+                    renderAiBubble();
+                });
+            }
+
+            if (fullContent) {
+                history.push({ role: 'assistant', content: fullContent });
+            }
+        } catch (e) {
+            showErrorBubble('连接失败: ' + e.message);
+        } finally {
+            setStreaming(false);
+            currentAiBubble = null;
+            // 恢复解释按钮可用性
+            if (aiMode === 'keyword') {
+                explainBtn.disabled = !sheetKeyword;
+            } else {
+                explainBtn.disabled = !getSelectionText();
+            }
+        }
+    }
+
+    function handleSseEvent(rawEvent, onDelta) {
+        // rawEvent 形如 "data: {...}"
+        const lines = rawEvent.split('\n');
+        for (const line of lines) {
+            const trimmed = line.trim();
+            if (!trimmed.startsWith('data:')) continue;
+            const jsonStr = trimmed.slice(5).trim();
+            if (!jsonStr || jsonStr === '[DONE]') return;
+            try {
+                const evt = JSON.parse(jsonStr);
+                if (evt.type === 'delta' && evt.content) {
+                    onDelta(evt.content);
+                } else if (evt.type === 'error') {
+                    showErrorBubble(evt.message || '未知错误');
+                }
+                // type === 'done' 无需处理
+            } catch (e) { /* 忽略解析失败的事件 */ }
+        }
+    }
+
+    function showErrorBubble(message) {
+        if (currentAiBubble) {
+            conversation.removeChild(currentAiBubble);
+            currentAiBubble = null;
+        }
+        const b = document.createElement('div');
+        b.className = 'ai-bubble error';
+        b.textContent = message;
+        conversation.appendChild(b);
+        conversation.scrollTop = conversation.scrollHeight;
+    }
+
+    function aiSendFollowup() {
+        const text = inputEl.value.trim();
+        if (!text || streaming) return;
+        inputEl.value = '';
+        inputEl.style.height = 'auto';
+        const word = aiMode === 'keyword' ? sheetKeyword : (getSelectionText() || sheetKeyword);
+        startStream(word || text, text);
+    }
+
+    // 输入框：Enter 发送、自动增高
+    inputEl.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' && !e.shiftKey) {
+            e.preventDefault();
+            aiSendFollowup();
+        }
+    });
+    inputEl.addEventListener('input', () => {
+        inputEl.style.height = 'auto';
+        inputEl.style.height = Math.min(inputEl.scrollHeight, 100) + 'px';
+    });
+
+    // 暴露给 onclick
+    window.openAiSheet = openAiSheet;
+    window.closeAiSheet = closeAiSheet;
+    window.aiSwitchMode = aiSwitchMode;
+    window.aiExplainSelection = aiExplainSelection;
+    window.aiSendFollowup = aiSendFollowup;
 })();

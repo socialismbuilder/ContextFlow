@@ -169,6 +169,7 @@ def _create_app(mw) -> web.Application:
     app.router.add_get("/api/undo/status", _handle_undo_status)
     app.router.add_post("/api/undo", _handle_undo)
     app.router.add_get("/api/tts/{text:.*}", _handle_tts)
+    app.router.add_post("/api/ai/chat", _handle_ai_chat)
 
     # 媒体文件
     app.router.add_get("/media/{path:.*}", _handle_media)
@@ -351,6 +352,75 @@ def _generate_tts_background(text: str) -> bytes | None:
         audio_data, ext = result
         return audio_data
     return None
+
+
+# ── AI 解释 SSE 代理 ──────────────────────────────────────────
+
+async def _handle_ai_chat(request: web.Request) -> web.StreamResponse:
+    """AI 解释流式代理。前端 POST {sentence, word, history}，
+    后端用本机 api_key 调 LLM，SSE 增量转发。key 永不离开本机。"""
+    from . import web_ai
+    from .config_manager import get_config
+
+    try:
+        body = await request.json()
+    except Exception:
+        return web.json_response({"error": "请求体不是合法 JSON"}, status=400)
+
+    sentence = body.get("sentence") or ""
+    word = (body.get("word") or "").strip()
+    history = body.get("history") or []
+    if not word:
+        return web.json_response({"error": "缺少 word"}, status=400)
+
+    config = get_config()
+
+    # 流式响应：LLM 调用在后台线程池（阻塞 IO），事件经 queue 回到异步循环写出
+    resp = web.StreamResponse(
+        status=200,
+        headers={
+            "Content-Type": "text/event-stream",
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",  # 关闭 nginx 缓冲，确保增量下发
+        },
+    )
+    await resp.prepare(request)
+
+    loop = asyncio.get_event_loop()
+    queue: asyncio.Queue = asyncio.Queue()
+    SENTINEL = object()
+
+    def producer():
+        """在后台线程消费阻塞生成器，把事件塞进异步 queue。"""
+        try:
+            for event in web_ai.stream_chat(config, sentence, word, history):
+                loop.call_soon_threadsafe(queue.put_nowait, event)
+        except Exception as e:
+            import traceback
+            traceback.print_exc()
+            loop.call_soon_threadsafe(
+                queue.put_nowait, {"type": "error", "message": f"意外错误: {e}"}
+            )
+        finally:
+            loop.call_soon_threadsafe(queue.put_nowait, SENTINEL)
+
+    loop.run_in_executor(None, producer)
+
+    try:
+        while True:
+            item = await queue.get()
+            if item is SENTINEL:
+                break
+            # 每个 SSE 事件：data: {json}\n\n
+            await resp.write(f"data: {json.dumps(item, ensure_ascii=False)}\n\n".encode("utf-8"))
+    except Exception:
+        pass
+    finally:
+        try:
+            await resp.write_eof()
+        except Exception:
+            pass
+    return resp
 
 
 # ── 媒体文件服务 ──────────────────────────────────────────────
