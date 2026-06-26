@@ -72,7 +72,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue';
+import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue';
 import { streamChat } from '../composables/useSSE.js';
 import { escapeHtml } from '../utils/text.js';
 
@@ -406,6 +406,17 @@ function close() {
         emit('close');
     }
 }
+
+// 例句在抽屉打开后变化（轮询就绪 / 刷新例句）时，重新分词并清空选区，
+// 否则选词区仍是旧例句、AI 解释用的是过期文本。
+watch(
+    () => props.sentence,
+    (text) => {
+        tokens.value = tokenize(text);
+        selStart.value = -1;
+        selEnd.value = -1;
+    }
+);
 
 onMounted(() => {
     // 初始化 tokens + 默认模式

@@ -40,7 +40,7 @@
                     <div ref="sentenceBtn" class="tts-btn" @click="readSentence">
                         <span class="tts-label">朗读例句</span>
                     </div>
-                    <div class="tts-btn ai-explain-entry" @click="$emit('open-ai', { sentence: plainSentence, keyword, mode })">
+                    <div class="tts-btn ai-explain-entry" @click="$emit('open-ai', { mode })">
                         <span class="tts-label">AI 解释</span>
                     </div>
                 </div>
@@ -67,9 +67,6 @@ const emit = defineEmits(['refresh', 'open-ai']);
 const refreshBtn = ref(null);
 const wordBtn = ref(null);
 const sentenceBtn = ref(null);
-
-// 纯文本例句（供 AI 抽屉用）
-const plainSentence = stripHtml(props.sentence);
 
 function readWord() {
     if (props.keyword) playTTS(props.keyword, wordBtn.value);

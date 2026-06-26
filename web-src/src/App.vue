@@ -23,7 +23,7 @@
     <!-- 悬浮答题按钮（仅卡片屏）-->
     <FabButton v-if="state.screen === Screen.CARD" :answer-visible="state.showAnswer" @answer="flow.answer($event)" @speak="cardAreaRef?.clickWord()" />
 
-    <!-- AI 解释抽屉 -->
+    <!-- AI 解释抽屉：例句直接绑定 state，轮询就绪/刷新后抽屉内例句会同步刷新 -->
     <AiBottomSheet
         v-if="aiOpen"
         :sentence="aiSentence"
@@ -35,8 +35,9 @@
 </template>
 
 <script setup>
-import { ref, onMounted, onUnmounted } from 'vue';
+import { ref, computed, onMounted, onUnmounted } from 'vue';
 import { useCardFlow, Screen } from './composables/useCardFlow.js';
+import { stripHtml } from './utils/text.js';
 import StatusBar from './components/StatusBar.vue';
 import DeckSelector from './components/DeckSelector.vue';
 import CardArea from './components/CardArea.vue';
@@ -53,14 +54,16 @@ const { state } = flow;
 const cardAreaRef = ref(null);
 
 // AI 抽屉状态
+// 例句/关键词直接绑定 state（轮询就绪/刷新后自动更新），不在这里做快照，
+// 否则 target 例句生成中打开抽屉、就绪后例句不会刷新。
 const aiOpen = ref(false);
-const aiSentence = ref('');
-const aiKeyword = ref('');
 const aiMode = ref('saved');
 
-function openAi({ sentence, keyword, mode }) {
-    aiSentence.value = sentence;
-    aiKeyword.value = keyword || '';
+// 例句传给抽屉用纯文本（去掉 <u> 高亮等），关键词取当前卡。
+const aiSentence = computed(() => stripHtml(state.sentence));
+const aiKeyword = computed(() => state.keyword);
+
+function openAi({ mode }) {
     aiMode.value = mode || 'saved';
     aiOpen.value = true;
 }
