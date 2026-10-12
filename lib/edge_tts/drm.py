@@ -6,6 +6,7 @@ import hashlib
 import secrets
 from datetime import datetime as dt
 from datetime import timezone as tz
+from email.utils import parsedate_to_datetime
 from typing import Dict, Optional
 
 import aiohttp
@@ -64,13 +65,12 @@ class DRM:
             Optional[float]: Unix timestamp of the parsed date string, or None if parsing failed.
         """
         try:
-            return (
-                dt.strptime(date, "%a, %d %b %Y %H:%M:%S %Z")
-                .replace(tzinfo=tz.utc)
-                .timestamp()
-            )
-        except ValueError:
+            parsed = parsedate_to_datetime(date)
+        except (TypeError, ValueError, IndexError):
             return None
+        if parsed.tzinfo is None:
+            parsed = parsed.replace(tzinfo=tz.utc)
+        return parsed.timestamp()
 
     @staticmethod
     def handle_client_response_error(e: aiohttp.ClientResponseError) -> None:
