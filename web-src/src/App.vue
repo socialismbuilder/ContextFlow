@@ -12,7 +12,7 @@
     <CardArea v-if="state.screen === Screen.CARD" ref="cardAreaRef" :state="state" @flip="flow.showBack()" @answer="flow.answer($event)" @refresh="flow.refreshSentence()" @open-ai="openAi" />
 
     <!-- 牌组选择 -->
-    <DeckSelector v-else-if="state.screen === Screen.DECK_SELECTOR" @select="onSelectDeck" @back="flow.closeDeckSelector()" />
+    <DeckSelector v-else-if="state.screen === Screen.DECK_SELECTOR" :syncing="state.syncing" @select="onSelectDeck" @back="flow.closeDeckSelector()" @sync="flow.syncToCloud()" />
 
     <!-- 静态屏 -->
     <WaitingScreen v-else-if="state.screen === Screen.WAITING" :seconds="state.waitSeconds" :remaining="state.learningRemaining" />

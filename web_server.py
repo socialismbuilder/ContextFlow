@@ -170,6 +170,8 @@ def _create_app(mw) -> web.Application:
     app.router.add_post("/api/undo", _handle_undo)
     app.router.add_get("/api/tts/{text:.*}", _handle_tts)
     app.router.add_post("/api/ai/chat", _handle_ai_chat)
+    app.router.add_post("/api/sync", _handle_sync)
+    app.router.add_get("/api/sync/status", _handle_sync_status)
 
     # 媒体文件
     app.router.add_get("/media/{path:.*}", _handle_media)
@@ -421,6 +423,27 @@ async def _handle_ai_chat(request: web.Request) -> web.StreamResponse:
         except Exception:
             pass
     return resp
+
+
+# ── AnkiWeb 云端同步 ──────────────────────────────────────────
+
+async def _handle_sync(request: web.Request) -> web.Response:
+    """触发 AnkiWeb 官方同步（fire-and-forget）。
+    trigger_sync 内部仅 run_on_main(onSync) 立即返回，不阻塞。"""
+    mw = request.app["mw"]
+    data = await run_on_main_async(mw, lambda: web_card.trigger_sync(mw))
+    if data is None:
+        return web.json_response({"error": "主线程繁忙，请稍后重试"}, status=503)
+    return web.json_response(data)
+
+
+async def _handle_sync_status(request: web.Request) -> web.Response:
+    """查询同步状态：{syncing, logged_in}。供前端轮询。"""
+    mw = request.app["mw"]
+    data = await run_on_main_async(mw, lambda: web_card.get_sync_status(mw))
+    if data is None:
+        return web.json_response({"error": "主线程繁忙，请稍后重试"}, status=503)
+    return web.json_response(data)
 
 
 # ── 媒体文件服务 ──────────────────────────────────────────────

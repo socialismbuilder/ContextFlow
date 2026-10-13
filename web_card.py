@@ -12,6 +12,35 @@ import time
 # 记录每张卡片在 Web 端首次展示的时间戳，用于计算真实学习时间。
 _card_show_times: dict[int, float] = {}  # card_id -> time.time()
 
+# ── 同步进行中标志 ────────────────────────────────────────────
+# Anki 没有现成的「同步进行中」API，用 gui_hooks.sync_will_start /
+# sync_did_finish 维护自有标志，供 /api/sync/status 轮询。
+_syncing = False
+
+
+def _on_sync_will_start():
+    global _syncing
+    _syncing = True
+
+
+def _on_sync_did_finish():
+    global _syncing
+    _syncing = False
+
+
+def _register_sync_hooks():
+    """注册同步钩子（幂等，避免重复 append）。"""
+    from aqt import gui_hooks
+    if _register_sync_hooks._done:
+        return
+    gui_hooks.sync_will_start.append(_on_sync_will_start)
+    gui_hooks.sync_did_finish.append(_on_sync_did_finish)
+    _register_sync_hooks._done = True
+
+
+_register_sync_hooks._done = False
+_register_sync_hooks()
+
 
 # ── 媒体 URL 重写 ──────────────────────────────────────────────
 
@@ -544,3 +573,42 @@ def check_sentence_status(mw) -> dict:
         }
 
     return {"ready": False}
+
+
+# ── AnkiWeb 云端同步 ──────────────────────────────────────────
+
+def get_sync_status(mw) -> dict:
+    """同步状态：是否进行中、桌面端是否已登录 AnkiWeb。"""
+    try:
+        logged_in = bool(mw.pm.sync_auth())
+    except Exception:
+        logged_in = False
+    return {
+        "syncing": _syncing,
+        "logged_in": logged_in,
+    }
+
+
+def trigger_sync(mw) -> dict:
+    """
+    触发 AnkiWeb 官方同步（fire-and-forget）。
+
+    用 mw.taskman.run_on_main(mw.onSync) 立即返回——onSync 内部会在
+    后台线程跑真正同步，绝不阻塞当前请求（也避免 run_on_main_async 的 10s 超时）。
+    真实进度通过 _syncing 标志（钩子维护）供 /api/sync/status 轮询。
+
+    返回值：
+      - {status:"sync_triggered"}：已派发到主线程
+      - {status:"already_syncing"}：已有同步在进行中
+      - {status:"not_logged_in"}：桌面端未登录 AnkiWeb（onSync 会弹登录框，
+        这里提前拦截，让 Web 端提示用户去桌面端登录）
+    """
+    if _syncing:
+        return {"status": "already_syncing"}
+    try:
+        if not mw.pm.sync_auth():
+            return {"status": "not_logged_in"}
+    except Exception:
+        return {"status": "not_logged_in"}
+    mw.taskman.run_on_main(mw.onSync)
+    return {"status": "sync_triggered"}

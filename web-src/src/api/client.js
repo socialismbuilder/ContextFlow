@@ -71,3 +71,10 @@ export const mediaUrl = (p) => '/media/' + p;
 // ── AI 流式对话（SSE over POST）──────────────────────────
 // 调用方用 useSSE，这里只暴露底层 streamChat 不直接用。
 export const AI_CHAT_URL = '/api/ai/chat';
+
+// ── AnkiWeb 云端同步 ─────────────────────────────────────
+// POST /api/sync -> {status:"sync_triggered"|"already_syncing"|"not_logged_in"}
+export const sync = () => request('POST', '/api/sync');
+
+// GET /api/sync/status -> {syncing, logged_in}
+export const getSyncStatus = () => request('GET', '/api/sync/status');

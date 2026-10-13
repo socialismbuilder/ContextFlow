@@ -30,6 +30,7 @@ export function useCardFlow() {
         counts: { new: 0, learning: 0, review: 0 },
         activeType: null,          // 'new' | 'learning' | 'review'
         canUndo: false,
+        syncing: false,            // AnkiWeb 同步进行中（按钮转圈 + 禁用）
 
         // 当前卡片
         cardMode: 'plain',         // 'target' | 'saved' | 'plain'
@@ -279,6 +280,52 @@ export function useCardFlow() {
         }
     }
 
+    // 与 AnkiWeb 云端同步：触发后轮询直到完成，再刷新状态与队列。
+    // 后端是 fire-and-forget，真正同步在桌面端 Qt 主线程异步进行。
+    function sleep(ms) {
+        return new Promise((resolve) => setTimeout(resolve, ms));
+    }
+
+    // 轮询 /api/sync/status 直到 syncing===false 或超时。
+    // 返回最后一次查到的状态（含 logged_in），供调用方判断未登录。
+    async function pollSyncDone(timeoutMs = 300000, intervalMs = 1500) {
+        const deadline = Date.now() + timeoutMs;
+        let last = { syncing: true };
+        while (Date.now() < deadline) {
+            try {
+                last = await api.getSyncStatus();
+                if (!last.syncing) return last;
+            } catch (e) {
+                // 单次轮询失败（网络抖动）不中断，继续重试
+            }
+            await sleep(intervalMs);
+        }
+        return last;
+    }
+
+    async function syncToCloud() {
+        if (state.syncing) return;
+        state.syncing = true;
+        try {
+            const res = await api.sync();
+            if (res.status === 'not_logged_in') {
+                showError('未登录 AnkiWeb', '请在桌面端登录 AnkiWeb 后再试。');
+                return;
+            }
+            if (res.status === 'already_syncing') {
+                // 已有同步在进行，直接进入轮询等待
+            }
+            await pollSyncDone();
+            // 同步完成：云端可能改了队列/到期 → 重新刷新状态 + 取下一张卡
+            await refreshStatus();
+            await fetchNext();
+        } catch (e) {
+            showError('同步失败', e.message);
+        } finally {
+            state.syncing = false;
+        }
+    }
+
     function openDeckSelector() {
         polling.stop();
         state.screen = Screen.DECK_SELECTOR;
@@ -294,6 +341,8 @@ export function useCardFlow() {
         // 卡片流转
         init, refreshStatus, fetchNext, showBack, answer, undoCard, checkUndo,
         refreshSentence,
+        // 云端同步
+        syncToCloud,
         // 牌组
         selectDeck, openDeckSelector, closeDeckSelector,
         // 直接暴露供组件读取的缓存
