@@ -219,16 +219,47 @@ def _strip_native_audio(html: str) -> str:
 
 
 def _auto_play_tts():
-    """Auto-click the word TTS button after card renders."""
+    """根据配置自动点击 TTS 朗读按钮（例句/单词/两者）。"""
     try:
         from aqt import mw
-        if mw and mw.reviewer and mw.reviewer.web:
-            mw.reviewer.web.eval(
-                "var btn=document.getElementById('tts-word');"
-                "if(btn)btn.click();"
-            )
-    except Exception:
-        pass
+        if not (mw and mw.reviewer and mw.reviewer.web):
+            return
+
+        config = get_config()
+        mode = config.get("tts_auto_play_mode", "sentence")
+        if mode == "none":
+            return
+
+        if mode == "word":
+            js = """
+            (function(){
+                var btn = document.getElementById('tts-word');
+                if (btn && !btn.classList.contains('loading')) btn.click();
+            })();
+            """
+        elif mode == "sentence":
+            js = """
+            (function(){
+                var s = document.querySelector('.card-text');
+                if (s && s.innerText && s.innerText.indexOf('例句生成中') !== -1) return;
+                var btn = document.getElementById('tts-sentence');
+                if (btn && !btn.classList.contains('loading')) btn.click();
+            })();
+            """
+
+        else:
+            js = """
+            (function(){
+                var s = document.querySelector('.card-text');
+                if (s && s.innerText && s.innerText.indexOf('例句生成中') !== -1) return;
+                var btn = document.getElementById('tts-sentence');
+                if (btn && !btn.classList.contains('loading')) btn.click();
+            })();
+            """
+
+        mw.reviewer.web.eval(js)
+    except Exception as e:
+        print(f"ERROR: _auto_play_tts 自动朗读失败: {e}")
 
 
 def on_card_render(html: str, card: Card, context: str) -> str:

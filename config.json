@@ -109,6 +109,7 @@
     "tts_engine": "edge_tts",
     "tts_custom_url": "",
     "tts_replace_audio": false,
+    "tts_auto_play_mode": "sentence",
     "web_port": 8765,
     "web_enabled": true,
     "second_keywords_enabled": true,
