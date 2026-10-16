@@ -13,76 +13,74 @@ class AISentenceGenerator:
 
     # --- 提示词模板 ---
 
-    DEFAULT_PROMPT_TEMPLATE = '''
-你是一个学习插件的例句生成助手
-请为{language}学习者生成5个包含关键词 '{world}' 的{language}例句，并附带中文翻译。
+    DEFAULT_PROMPT_TEMPLATE = '''你是一个专业的{language}学习助手。请为学习者生成 5 个包含目标词 '{world}' 的高质量例句，并提供准确的中文翻译。
 
-学习者信息：
-- 当前词汇量大致为：{vocab_level}
-- 学习目标是：{learning_goal}
-- 句子最大难度：{difficulty_level}
-- 句子最大长度:{sentence_length_desc}
+【学习者设定与要求】
+- 目标词汇量：{vocab_level}
+- 学习目标：{learning_goal}
+- 句子难度：{difficulty_level}
+- 句子长度：{sentence_length_desc}
 
-例句生成规则：
-- 提供的关键词 '{world}' 是一个完整的词汇/短语。它可以是原形、复数、过去式等屈折形式，或作为组合词的一部分，但不能是该词根衍生的其他词汇。
-（例如，如果关键词是 "book"，例句中可以使用 "books" 或 "notebook" 中的 "book" 部分，前提是notebook的book代表着原本含义）
-- 绝对禁止将关键词用作前后缀来构成一个不同的词汇，或使用与关键词同根但意义完全不同的衍生词。
-（例如，给出关键词book,例句不能使用booking;给出king，例句不能使用kingdom）
-- 若关键词是用括号注释了某一个翻译的多义词，则例句中只能使用该翻译对应的含义。
-- 语境应尽量与学习目标 ({learning_goal}) 相关，或者为通用场景。
-- 每个例句必须包含关键词 '{world}'。
-{second_keywords}
-- - 第二关键词的加入顺势而为，不限制是否加入或加入几个，请以句子自然流畅符合逻辑，不能为了加入而破坏句子的合理性
-- 5个例句应尽量全面的覆盖关键词的各种用法和含义。
-- 例句和翻译必须分别是单一语言，不得双语混杂，不要被括号中的注释影响。
+【例句生成准则】
+1. 词形形态：每句必须包含目标词 '{world}'。允许使用自然的屈折变化（如时态、复数），但严禁使用派生衍生词（例如：词为 book 时不可用 booking，king 不可用 kingdom）。
+2. 词义限定：若目标词带有括号注释（如多义词指定义项），例句必须严格限定在该注释对应的含义。
+3. 语境分布：5个例句应尽量展示该词在符合学习目标语境下的不同典型用法或常见搭配。
+4. 语言纯粹：例句必须是纯{language}，翻译必须是纯中文，严禁双语夹杂。{second_keywords}
 
-输出格式要求：
-
-- 必须返回严格的JSON格式，结构为：{{"sentences": [[{language}例句1, 中文翻译1], [{language}例句2, 中文翻译2], ..., [{language}例句5, 中文翻译5]]}}，不得以代码块形式输出
-- 每个子数组必须包含两个字符串元素：第一个是包含关键词'{world}'的{language}例句，第二个是对应的中文翻译
-- 5个例句需覆盖关键词的各种用法和含义，且完全符合前文所述的难度/长度/学习目标要求
-- **绝对不要** 输出任何其他内容，如序号、标题、解释或额外字段
-- 必须以`sentences`命名变量，而不是{world}'''
+【输出格式要求】
+- 必须直接输出纯 JSON，严禁使用 Markdown 代码块（如 ```json），严禁输出任何问候、解释、序号或额外字段。
+- 顶层必须是以 "sentences" 为键的对象，包含 5 个子数组，格式如下：
+{{"sentences": [
+  ["{language}例句1", "中文翻译1"],
+  ...
+  ["{language}例句5", "中文翻译5"]
+]}}'''
 
     DEFAULT_FORMAT_NORMAL = '''
 
-示例JSON输出：
+【输出示例】
 {{
-    "sentences": [
-        [
-            "The research findings suggest a correlation between sleep quality and cognitive performance.",
-            "研究结果表明睡眠质量与认知表现之间存在相关性。"
-        ],
-        [
-            "Children instinctively grasp simple concepts faster than abstract theories.",
-            "孩子们本能地掌握简单概念比抽象理论要快。"
-        ]
+  "sentences": [
+    [
+      "The research findings suggest a clear correlation between sleep quality and cognitive performance.",
+      "研究结果表明，睡眠质量与认知表现之间存在明显的关联。"
+    ],
+    [
+      "Children instinctively grasp simple concepts faster than abstract theories.",
+      "孩子们本能地掌握简单概念比抽象理论要快。"
     ]
+  ]
 }}
 
-
-示例仅为格式参考。语言，难度，句子长度等信息请按照生成规则。请严格按照上述要求生成。
-'''
+请严格按照上述要求与示例格式直接输出纯 JSON。'''
 
     DEFAULT_FORMAT_HIGHLIGHT = '''
-- 翻译需要自然准确，并在关键词前后，以及翻译的对应或相关部分，加上<u>标签强调显示。
-示例JSON输出：
+
+【高亮标记规范（极其重要，必须严格执行）】
+1. 目标词与屈折整体标记：英文例句中必须使用 <u>...</u> 标记目标词；其屈折变化形式（如时态、复数）必须整体包裹在标签内（如 <u>mills</u>、<u>strolled</u>）。
+2. 固定短语整体包裹：若目标词与相邻词构成了固定短语、搭配或成语（如 "For example", "water mill", "take care of" 等），必须将【整个短语作为整体】用 <u>...</u> 包裹（例如必须标为 <u>For example</u>，严禁标成 For <u>example</u>）。
+3. 汉英双向对齐：中文翻译中对应目标词或固定短语的含义部分，【必须且只能】使用 <u>...</u> 严格对应标记（例如 <u>For example</u> 对应 <u>例如</u>，<u>water mill</u> 对应 <u>水磨</u>）。
+4. 严禁单端漏标：每组例句和翻译必须有且仅有对应的高亮标记，绝对禁止单侧遗漏（严禁英文标了中文没标，或中文标了英文没标）！
+
+【输出示例】
 {{
-    "sentences": [
-        [
-            "The research findings suggest a <u>correlation</u> between sleep quality and cognitive performance.",
-            "研究结果表明睡眠质量与认知表现之间存在<u>相关性</u>。"
-        ],
-        [
-            "Children <u>instinctively</u> grasp simple concepts faster than abstract theories.",
-            "孩子们<u>本能地</u>掌握简单概念比抽象理论要快。"
-        ]
+  "sentences": [
+    [
+      "<u>For example</u>, you can find a hidden carousel in the casino area of the game.",
+      "<u>例如</u>，你可以在游戏的赌场区域找到一个隐藏的旋转木马。"
+    ],
+    [
+      "The research findings suggest a clear <u>correlation</u> between sleep quality and cognitive performance.",
+      "研究结果表明，睡眠质量与认知表现之间存在明显的<u>相关性</u>。"
+    ],
+    [
+      "In this workshop, you can use the <u>water mill</u> to generate power for your base.",
+      "在这个工坊里，你可以使用<u>水磨</u>为你的基地发电。"
     ]
+  ]
 }}
 
-
-示例仅为格式参考。语言，难度，句子长度等信息请按照生成规则。请严格按照上述要求生成。
-'''
+请严格按照上述要求与高亮规范直接输出纯 JSON。'''
 
     DEFAULT_CONFIG = {
         "vocab_level": "大学英语四级 CET-4 (4000词)",
@@ -126,7 +124,7 @@ class AISentenceGenerator:
                 second_keywords = random.sample(self._top_difficulty_keywords, 10) if len(
                     self._top_difficulty_keywords) >= 10 else self._top_difficulty_keywords
                 second_keywords_str = ", ".join(second_keywords)
-                second_keywords_str = "- 在保证句子流畅的前提下，可以在每个例句中尝试融入若干以下词汇(" + second_keywords_str + ")，不限制每句融入几个，不得强制融入牺牲流传性，0-3个为佳，必须以句子自然流畅为前提。"
+                second_keywords_str = "\n5. 拓展融入：在保证句子自然流畅的前提下，可顺势在例句中融入以下词汇中的 0-3 个（非强制，以自然流畅为先）：" + second_keywords_str
         else:
             second_keywords_str = ""
 
