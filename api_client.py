@@ -22,14 +22,16 @@ class AISentenceGenerator:
 - 句子长度：{sentence_length_desc}
 
 【例句生成准则】
-1. 词形形态：每句必须包含目标词 '{world}'。允许使用自然的屈折变化（如时态、复数），但严禁使用派生衍生词（例如：词为 book 时不可用 booking，king 不可用 kingdom）。
-2. 词义限定：若目标词带有括号注释（如多义词指定义项），例句必须严格限定在该注释对应的含义。
-3. 语境分布：5个例句应尽量展示该词在符合学习目标语境下的不同典型用法或常见搭配。
-4. 语言纯粹：例句必须是纯{language}，翻译必须是纯中文，严禁双语夹杂。{second_keywords}
+1. 词形形态：每句必须包含目标词 '{world}'。允许使用自然的屈折变化（如时态、复数），也允许它以固定短语或复合词的一部分出现（例如词为 book 时，books、notebook 中作"书"讲的 book 均可用）。
+2. 严禁派生：绝对禁止使用与目标词同根但含义不同的派生词（例如词为 book 时不可用 booking，词为 king 时不可用 kingdom）。
+3. 词义限定：若目标词带有括号注释（如多义词指明义项），例句必须严格限定在该注释对应的含义，且输出中不要保留注释文字。
+4. 语境分布：5 个例句应尽量展示该词的不同典型用法与常见搭配，语境尽量贴合学习目标；若该词不适合学习目标语境，可用通用场景，不得生搬硬套。
+5. 语言纯粹：例句必须是纯{language}，翻译必须是纯中文，严禁双语夹杂。5 个例句必须同时满足上述难度、长度与学习目标要求。{second_keywords}
 
 【输出格式要求】
 - 必须直接输出纯 JSON，严禁使用 Markdown 代码块（如 ```json），严禁输出任何问候、解释、序号或额外字段。
-- 顶层必须是以 "sentences" 为键的对象，包含 5 个子数组，格式如下：
+- 顶层必须是以 "sentences" 为键的对象，包含 5 个子数组；每个子数组含两个字符串，第一个是包含目标词 '{world}' 的{language}例句，第二个是它的中文翻译。
+- 结构示例如下：
 {{"sentences": [
   ["{language}例句1", "中文翻译1"],
   ...
@@ -52,35 +54,36 @@ class AISentenceGenerator:
   ]
 }}
 
-请严格按照上述要求与示例格式直接输出纯 JSON。'''
+示例仅为格式参考，语言，难度，句子长度等信息请按照生成规则。请严格按照上述要求与示例格式直接输出纯 JSON。'''
 
     DEFAULT_FORMAT_HIGHLIGHT = '''
 
 【高亮标记规范（极其重要，必须严格执行）】
-1. 目标词与屈折整体标记：英文例句中必须使用 <u>...</u> 标记目标词；其屈折变化形式（如时态、复数）必须整体包裹在标签内（如 <u>mills</u>、<u>strolled</u>）。
+1. 目标词与屈折整体标记：{language}例句中必须使用 <u>...</u> 标记目标词（标签必须成对闭合）；其屈折变化形式（如时态、复数）必须整体包裹在标签内（如 <u>mills</u>、<u>strolled</u>）。
 2. 固定短语整体包裹：若目标词与相邻词构成了固定短语、搭配或成语（如 "For example", "water mill", "take care of" 等），必须将【整个短语作为整体】用 <u>...</u> 包裹（例如必须标为 <u>For example</u>，严禁标成 For <u>example</u>）。
 3. 汉英双向对齐：中文翻译中对应目标词或固定短语的含义部分，【必须且只能】使用 <u>...</u> 严格对应标记（例如 <u>For example</u> 对应 <u>例如</u>，<u>water mill</u> 对应 <u>水磨</u>）。
-4. 严禁单端漏标：每组例句和翻译必须有且仅有对应的高亮标记，绝对禁止单侧遗漏（严禁英文标了中文没标，或中文标了英文没标）！
+4. 严禁单端漏标：每组例句和翻译必须有且仅有对应的高亮标记，绝对禁止单侧遗漏（严禁{language}标了中文没标，或中文标了{language}没标）！同一句中该词/短语若出现多次，每一处都要标记。
+5. 只标目标词：只标记目标词本身（含其屈折形式，或与它组成的固定短语），严禁标记例句中其他无关的常用词、连接词或短语。
 
 【输出示例】
 {{
   "sentences": [
     [
-      "<u>For example</u>, you can find a hidden carousel in the casino area of the game.",
-      "<u>例如</u>，你可以在游戏的赌场区域找到一个隐藏的旋转木马。"
-    ],
-    [
-      "The research findings suggest a clear <u>correlation</u> between sleep quality and cognitive performance.",
-      "研究结果表明，睡眠质量与认知表现之间存在明显的<u>相关性</u>。"
+      "The old <u>mills</u> by the river have been turned into museums.",
+      "河边的那些老<u>磨坊</u>已被改建成博物馆。"
     ],
     [
       "In this workshop, you can use the <u>water mill</u> to generate power for your base.",
       "在这个工坊里，你可以使用<u>水磨</u>为你的基地发电。"
+    ],
+    [
+      "You should <u>take care of</u> your health before anything else.",
+      "在考虑其他事情之前，你应该先<u>照顾</u>好自己的健康。"
     ]
   ]
 }}
 
-请严格按照上述要求与高亮规范直接输出纯 JSON。'''
+示例仅为格式参考，语言，难度，句子长度等信息请按照生成规则。请严格按照上述要求与高亮规范直接输出纯 JSON。'''
 
     DEFAULT_CONFIG = {
         "vocab_level": "大学英语四级 CET-4 (4000词)",
@@ -124,7 +127,7 @@ class AISentenceGenerator:
                 second_keywords = random.sample(self._top_difficulty_keywords, 10) if len(
                     self._top_difficulty_keywords) >= 10 else self._top_difficulty_keywords
                 second_keywords_str = ", ".join(second_keywords)
-                second_keywords_str = "\n5. 拓展融入：在保证句子自然流畅的前提下，可顺势在例句中融入以下词汇中的 0-3 个（非强制，以自然流畅为先）：" + second_keywords_str
+                second_keywords_str = "\n6. 拓展融入：在保证句子自然流畅的前提下，可顺势在例句中融入以下词汇中的 0-3 个（非强制，以自然流畅为先）：" + second_keywords_str
         else:
             second_keywords_str = ""
 
