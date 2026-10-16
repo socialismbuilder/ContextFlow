@@ -254,7 +254,7 @@ def add_othersetting(parent_dialog, basic_layout, current_config):
     parent_dialog.tts_replace_audio.setChecked(current_config.get("tts_replace_audio", False))
     tts_layout.addRow("", parent_dialog.tts_replace_audio)
 
-    parent_dialog.tts_auto_play_combo = QComboBox()
+    parent_dialog.tts_auto_play_combo = NoWheelComboBox()
     parent_dialog.tts_auto_play_combo.addItem("自动朗读例句", "sentence")
     parent_dialog.tts_auto_play_combo.addItem("自动朗读单词", "word")
     parent_dialog.tts_auto_play_combo.addItem("不自动朗读", "none")

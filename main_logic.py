@@ -219,14 +219,13 @@ def _strip_native_audio(html: str) -> str:
 
 
 def _auto_play_tts():
-    """根据配置自动点击 TTS 朗读按钮（例句/单词/两者）。"""
+    """根据配置自动点击 TTS 朗读按钮（例句/单词/不自动朗读）。"""
     try:
         from aqt import mw
         if not (mw and mw.reviewer and mw.reviewer.web):
             return
 
-        config = get_config()
-        mode = config.get("tts_auto_play_mode", "sentence")
+        mode = get_config().get("tts_auto_play_mode", "sentence")
         if mode == "none":
             return
 
@@ -237,21 +236,13 @@ def _auto_play_tts():
                 if (btn && !btn.classList.contains('loading')) btn.click();
             })();
             """
-        elif mode == "sentence":
-            js = """
-            (function(){
-                var s = document.querySelector('.card-text');
-                if (s && s.innerText && s.innerText.indexOf('例句生成中') !== -1) return;
-                var btn = document.getElementById('tts-sentence');
-                if (btn && !btn.classList.contains('loading')) btn.click();
-            })();
-            """
-
         else:
+            # 例句模式：以显示状态（后端）为准，例句未就绪时不朗读，
+            # 避免把"例句生成中..."占位文本朗读出来。
+            if not showing_sentence or showing_sentence == WAITING_SENTENCE_TEXT:
+                return
             js = """
             (function(){
-                var s = document.querySelector('.card-text');
-                if (s && s.innerText && s.innerText.indexOf('例句生成中') !== -1) return;
                 var btn = document.getElementById('tts-sentence');
                 if (btn && !btn.classList.contains('loading')) btn.click();
             })();
