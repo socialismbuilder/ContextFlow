@@ -276,7 +276,7 @@ def on_card_render(html: str, card: Card, context: str) -> str:
         result = _render_question_side(card, base_deck_name, field_index_match)
         if result is not None:
             if replace_audio:
-                QTimer.singleShot(0, _auto_play_tts)
+                QTimer.singleShot(150, _auto_play_tts)
             return result
         if replace_audio:
             #return _strip_native_audio(html)
@@ -288,7 +288,7 @@ def on_card_render(html: str, card: Card, context: str) -> str:
         if replace_audio:
             #result = _strip_native_audio(result)
             pass
-            QTimer.singleShot(0, _auto_play_tts)
+            QTimer.singleShot(150, _auto_play_tts)
         return result
 
     return html
