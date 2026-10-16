@@ -205,14 +205,36 @@ def _normalize_apple_locale(locale: str | None) -> str | None:
 
 
 def _clean_text_for_tts(text: str) -> str:
-    """Remove HTML tags and clean text for TTS."""
+    """Remove HTML tags and clean text for TTS, ensuring it starts from the first word."""
     text = re.sub(r'<[^>]+>', '', text)
     text = re.sub(r'\s+', ' ', text).strip()
+    # 剥离句首的序号、前导标点、引号、破折号、星号等，确保从第一个真正的单词字符开始读
+    text = re.sub(r'^[^\w\s"\'“”‘’]+', '', text).strip()
+    text = re.sub(r'^["\'“”‘’`]+', '', text).strip()
     return text
+
+
+def _add_mp3_leading_silence(audio_data: bytes, ms: int = 240) -> bytes:
+    """Prepend silent MP3 frames to audio to prevent initial audio clipping by hardware audio devices."""
+    if not audio_data or len(audio_data) < 4:
+        return audio_data
+
+    # 检查 MP3 帧同步字 (0xFF 0xEx 或 0xFF 0xFx)
+    if audio_data[0] == 0xFF and (audio_data[1] & 0xE0) == 0xE0:
+        # Edge TTS 典型的 MPEG-2 Layer 3, 24kHz, 48kbps, mono: 144 字节/帧 (24ms/帧)
+        # 10 帧约为 240ms 静音，足够提前唤醒声卡 DAC 与蓝牙耳机
+        num_frames = max(1, ms // 24)
+        silent_frame = bytes([0xFF, 0xF3, 0x64, 0xC4]) + bytes(140)
+        return (silent_frame * num_frames) + audio_data
+
+    return audio_data
 
 
 def _play_bytes(audio_data: bytes, ext: str = ".mp3") -> str:
     """Write audio bytes to a temp file and play it. Must be called on main thread."""
+    if ext.lower() == ".mp3":
+        audio_data = _add_mp3_leading_silence(audio_data)
+
     fd, path = tempfile.mkstemp(suffix=ext)
     try:
         os.write(fd, audio_data)
