@@ -48,8 +48,8 @@ def get_font_css() -> str:
 
 def process_highlight(html_text: str) -> str:
     """Convert <u> tags to highlighted spans."""
-    return re.compile(r'<u>(.*?)</u>').sub(
-        r'<span class="highlight">\1</span> ', html_text
+    return re.compile(r'<u>(.*?)</u>', re.IGNORECASE).sub(
+        r'<span class="highlight">\1</span>', html_text
     )
 
 
