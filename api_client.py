@@ -329,9 +329,15 @@ class AISentenceGenerator:
     # --- 模型列表 ---
 
     @staticmethod
-    def fetch_available_models(api_url: str, api_key: str) -> list:
+    def fetch_available_models(api_url: str, api_key: str) -> tuple:
+        """获取模型列表。
+
+        返回 (models, error)：
+        - 成功：(模型 id 列表, None)
+        - 失败：([], 面向用户的中文错误说明)
+        """
         if not api_url or not api_key:
-            return []
+            return [], "请先填写 API URL 和 API Key"
 
         endpoint = api_url
         if "/chat/completions" in api_url:
@@ -346,15 +352,41 @@ class AISentenceGenerator:
             "Content-Type": "application/json",
         }
 
+        def fail(msg: str) -> tuple:
+            print(f"错误：[fetch_available_models] {msg} ({endpoint})")
+            return [], msg
+
         try:
             response = requests.get(endpoint, headers=headers, timeout=10)
-            response.raise_for_status()
-            data = response.json()
-            models = [m.get("id") for m in data.get("data", []) if isinstance(m, dict) and m.get("id")]
-            return models
+        except requests.exceptions.Timeout:
+            return fail("请求超时，请检查网络连接或 API 地址是否正确")
+        except requests.exceptions.ConnectionError:
+            return fail("网络连接失败，请检查网络连接或 API 地址是否正确")
         except Exception as e:
-            print(f"错误：[fetch_available_models] 获取模型列表失败: {e}")
-            return []
+            return fail(f"请求失败：{e}")
+
+        status = response.status_code
+        if status in (401, 403):
+            return fail(f"API Key 无效或已过期，请检查密钥是否正确（HTTP {status}）")
+        if status == 404:
+            return fail("该供应商不支持查询模型列表，请手动填写模型名称（HTTP 404）")
+        if status == 429:
+            return fail("请求过于频繁，请稍后再试（HTTP 429）")
+        if status >= 500:
+            return fail(f"供应商服务异常，请稍后再试（HTTP {status}）")
+        if status != 200:
+            return fail(f"获取模型列表失败，请检查 API 地址与密钥（HTTP {status}）")
+
+        try:
+            data = response.json()
+        except Exception:
+            return fail("接口返回的不是有效 JSON，可能不是标准的模型列表接口")
+
+        raw = data.get("data", []) if isinstance(data, dict) else []
+        models = [m.get("id") for m in raw if isinstance(m, dict) and m.get("id")]
+        if not models:
+            return fail("供应商未返回任何模型，可能不支持标准 /models 接口，请手动填写模型名称")
+        return models, None
 
     # --- 连接测试 ---
 
@@ -473,7 +505,8 @@ def get_top_difficulty_keywords():
     return _generator.get_top_difficulty_keywords()
 
 
-def fetch_available_models(api_url: str, api_key: str) -> list:
+def fetch_available_models(api_url: str, api_key: str) -> tuple:
+    """返回 (模型 id 列表, 错误说明或 None)，详见 AISentenceGenerator.fetch_available_models。"""
     return AISentenceGenerator.fetch_available_models(api_url, api_key)
 
 

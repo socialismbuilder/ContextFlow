@@ -434,10 +434,10 @@ def _refresh_model_list(parent_dialog, force=False):
                 QMessageBox.warning(parent_dialog, "错误", "请先填写 API Key")
             return
 
-        models = api_client.fetch_available_models(api_url, api_key)
+        models, error = api_client.fetch_available_models(api_url, api_key)
         if not models:
             if force:
-                QMessageBox.warning(parent_dialog, "错误", "无法获取模型列表，可能是配置错误或供应商不支持查询列表")
+                QMessageBox.warning(parent_dialog, "错误", error or "无法获取模型列表，可能是配置错误或供应商不支持查询列表")
             return
 
         parent_dialog.cached_models = models
@@ -456,6 +456,10 @@ def _refresh_model_list(parent_dialog, force=False):
     parent_dialog.model_completer.setFilterMode(Qt.MatchFlag.MatchContains)
     parent_dialog.model_completer.setCaseSensitivity(Qt.CaseSensitivity.CaseInsensitive)
     parent_dialog.model_name.setCompleter(parent_dialog.model_completer)
+
+    # 仅在用户主动点击“刷新”时提示成功，打开设置时自动拉取不打扰
+    if force:
+        QMessageBox.information(parent_dialog, "成功", f"模型列表已刷新，共获取 {len(models)} 个模型。")
 
 def _test_api_connection(parent_dialog):
     api_url = parent_dialog.api_url.text()
