@@ -214,20 +214,100 @@ def _clean_text_for_tts(text: str) -> str:
     return text
 
 
+# MP3 (Layer III) 静音帧构造所需表：码率 index 0/15 无效，采样率 index 0b11 无效
+_MPEG_L3_BITRATES_V1 = [0, 32, 40, 48, 56, 64, 80, 96, 112, 128, 160, 192, 224, 256, 320]
+_MPEG_L3_BITRATES_LSF = [0, 8, 16, 24, 32, 40, 48, 56, 64, 80, 96, 112, 128, 144, 160]
+_MPEG_L3_SAMPLE_RATES = {
+    0b00: (11025, 12000, 8000),   # MPEG-2.5
+    0b10: (22050, 24000, 16000),  # MPEG-2
+    0b11: (44100, 48000, 32000),  # MPEG-1
+}
+
+
+def _parse_mp3_frame_header(data: bytes, pos: int):
+    """解析 pos 处 4 字节的 MP3 (Layer III) 帧头。
+
+    返回 (帧长[不含padding], 每帧采样数, 每帧时长ms)，非法则返回 None。
+    padding 位按 0 计算（构造静音帧时会清掉该位）；Layer I/II 不支持。
+    """
+    if pos < 0 or pos + 4 > len(data):
+        return None
+    if data[pos] != 0xFF or (data[pos + 1] & 0xE0) != 0xE0:
+        return None
+    version = (data[pos + 1] >> 3) & 0x03   # 0b01 为保留值
+    layer = (data[pos + 1] >> 1) & 0x03     # 0b01 为 Layer III
+    if version == 0b01 or layer != 0b01:
+        return None
+    bitrate_idx = data[pos + 2] >> 4
+    sample_idx = (data[pos + 2] >> 2) & 0x03
+    if bitrate_idx in (0, 15) or sample_idx == 0b11:
+        return None
+    if version == 0b11:
+        base, samples_per_frame = 144, 1152
+        bitrate = _MPEG_L3_BITRATES_V1[bitrate_idx]
+    else:
+        base, samples_per_frame = 72, 576
+        bitrate = _MPEG_L3_BITRATES_LSF[bitrate_idx]
+    sample_rate = _MPEG_L3_SAMPLE_RATES[version][sample_idx]
+    length = base * bitrate * 1000 // sample_rate
+    if length <= 4:
+        return None
+    return length, samples_per_frame, samples_per_frame * 1000.0 / sample_rate
+
+
 def _add_mp3_leading_silence(audio_data: bytes, ms: int = 240) -> bytes:
-    """Prepend silent MP3 frames to audio to prevent initial audio clipping by hardware audio devices."""
+    """Prepend silent MP3 frames to audio to prevent initial audio clipping by hardware audio devices.
+
+    静音帧头部参数直接复制真实首帧（清掉 padding/CRC 位后按帧长公式填零载荷），
+    与原流的版本/码率/采样率/声道严格一致，不改动原音频任何字节；
+    找不到合法 MP3 帧头时原样返回。10 帧左右（约 240ms）静音
+    足够提前唤醒声卡 DAC 与蓝牙耳机。
+    """
     if not audio_data or len(audio_data) < 4:
         return audio_data
 
-    # 检查 MP3 帧同步字 (0xFF 0xEx 或 0xFF 0xFx)
-    if audio_data[0] == 0xFF and (audio_data[1] & 0xE0) == 0xE0:
-        # Edge TTS 典型的 MPEG-2 Layer 3, 24kHz, 48kbps, mono: 144 字节/帧 (24ms/帧)
-        # 10 帧约为 240ms 静音，足够提前唤醒声卡 DAC 与蓝牙耳机
-        num_frames = max(1, ms // 24)
-        silent_frame = bytes([0xFF, 0xF3, 0x64, 0xC4]) + bytes(140)
-        return (silent_frame * num_frames) + audio_data
+    start = 0
+    if audio_data[:3] == b"ID3":
+        # ID3v2 标签：读 synchsafe 大小并跳过（底部标志位 bit4 为 1 时末尾还有 10 字节 footer）
+        if len(audio_data) < 10:
+            return audio_data
+        tag_size = (
+            ((audio_data[6] & 0x7F) << 21)
+            | ((audio_data[7] & 0x7F) << 14)
+            | ((audio_data[8] & 0x7F) << 7)
+            | (audio_data[9] & 0x7F)
+        )
+        start = 10 + tag_size + (10 if audio_data[5] & 0x10 else 0)
+        if start + 8 > len(audio_data):
+            return audio_data
 
-    return audio_data
+    # 找第一个合法帧头。帧头不在数据起点时，额外要求下一帧也是同参数的合法帧，
+    # 避免把二进制噪声里的 0xFFEx 误认成同步字（比如标签后的杂散字节）。
+    pos = start
+    limit = min(len(audio_data) - 4, start + 4096)
+    first = None
+    while pos <= limit:
+        candidate = _parse_mp3_frame_header(audio_data, pos)
+        if candidate is not None:
+            length = candidate[0]
+            if pos == start:
+                first = candidate
+                break
+            second = _parse_mp3_frame_header(audio_data, pos + length)
+            if second is not None and second[0] == length and abs(second[2] - candidate[2]) < 0.01:
+                first = candidate
+                break
+        pos += 1
+    if first is None:
+        return audio_data
+
+    length, _samples, frame_ms = first
+    hdr = bytearray(audio_data[pos:pos + 4])
+    hdr[1] |= 0x01     # protection=1：静音帧不带 CRC 校验域
+    hdr[2] &= 0xFD     # 清 padding 位，帧长与头部声明的参数严格一致
+    silent_frame = bytes(hdr) + bytes(length - 4)
+    num_frames = max(1, round(ms / frame_ms))
+    return audio_data[:pos] + (silent_frame * num_frames) + audio_data[pos:]
 
 
 def _play_bytes(audio_data: bytes, ext: str = ".mp3") -> str:
