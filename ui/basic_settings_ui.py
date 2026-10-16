@@ -250,9 +250,25 @@ def add_othersetting(parent_dialog, basic_layout, current_config):
         lambda lang: _on_learning_language_changed(parent_dialog, lang)
     )
 
-    parent_dialog.tts_replace_audio = QCheckBox("替代卡片原有声音（自动朗读例句）")
+    parent_dialog.tts_replace_audio = QCheckBox("替代卡片原有声音")
     parent_dialog.tts_replace_audio.setChecked(current_config.get("tts_replace_audio", False))
     tts_layout.addRow("", parent_dialog.tts_replace_audio)
+
+    parent_dialog.tts_auto_play_combo = QComboBox()
+    parent_dialog.tts_auto_play_combo.addItem("自动朗读例句", "sentence")
+    parent_dialog.tts_auto_play_combo.addItem("自动朗读单词", "word")
+    parent_dialog.tts_auto_play_combo.addItem("不自动朗读", "none")
+
+    saved_mode = current_config.get("tts_auto_play_mode", "sentence")
+    idx = parent_dialog.tts_auto_play_combo.findData(saved_mode)
+    if idx >= 0:
+        parent_dialog.tts_auto_play_combo.setCurrentIndex(idx)
+
+    # 仅在开启"替代卡片原有声音"时可用
+    parent_dialog.tts_auto_play_combo.setEnabled(parent_dialog.tts_replace_audio.isChecked())
+    parent_dialog.tts_replace_audio.toggled.connect(parent_dialog.tts_auto_play_combo.setEnabled)
+
+    tts_layout.addRow("自动朗读内容:", parent_dialog.tts_auto_play_combo)
 
     tts_group.setLayout(tts_layout)
     basic_layout.addWidget(tts_group)
@@ -632,6 +648,7 @@ def save_basic_settings(parent_dialog):
         "tts_engine": tts_engine_value,
         "tts_custom_url": parent_dialog.tts_custom_url.text(),
         "tts_replace_audio": parent_dialog.tts_replace_audio.isChecked(),
+        "tts_auto_play_mode": parent_dialog.tts_auto_play_combo.currentData() or "sentence",
         "web_enabled": parent_dialog.web_enabled.isChecked(),
         "web_port": parent_dialog.web_port.value(),
         "second_keywords_enabled": parent_dialog.second_keywords_enabled.isChecked(),
