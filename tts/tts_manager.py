@@ -8,6 +8,7 @@ import subprocess
 import sys
 import tempfile
 import threading
+from collections import deque
 
 from ..config_manager import get_config
 
@@ -334,6 +335,17 @@ class TTSManager:
         self._apple_spoken_content_defaults_mtime = None
         self._apple_process = None
 
+        # 读音预生成：单一后台线程串行消费的 FIFO 队列。
+        # 刻意不用线程池——Edge TTS 并发一高就会被微软服务端掐断，
+        # 本地 TTS 多路并行显卡也扛不住，串行逐个生成最稳妥。
+        # deque+Condition 而非 queue.Queue：需要 front 插队能力
+        # （当前卡片马上会被点到的音频要排到待预取单词前面）。
+        self._prefetch_deque: deque = deque()
+        self._prefetch_cond = threading.Condition()
+        self._prefetch_queued: set[str] = set()  # 已入队/生成中的 cache_key，防重复入队
+        self._prefetch_lock = threading.Lock()
+        self._prefetch_thread: threading.Thread | None = None
+
     def play_cached(self, text: str) -> str | None:
         """Check cache and play if hit. Returns file path on hit, None on miss."""
         config = get_config()
@@ -371,7 +383,12 @@ class TTSManager:
             self._play_apple_tts(text)
 
     def generate(self, text: str) -> tuple[bytes, str] | None:
-        """Generate audio in background thread. Returns (audio_bytes, ext) or None."""
+        """Generate audio in background thread. Returns (audio_bytes, ext) or None.
+
+        先查内存缓存再生成：Web 端 /api/tts 的每次请求都直接走这里
+        （桌面端点朗读前会先查 play_cached，Web 端没有这一步），
+        不查缓存的话预生成的读音永远命中不了，每次都重新请求微软服务器。
+        """
         config = get_config()
         engine = config.get("tts_engine", "edge_tts")
         text = _clean_text_for_tts(text)
@@ -379,6 +396,10 @@ class TTSManager:
             return None
 
         cache_key = f"{engine}:{text}"
+        cached = self._cache.get(cache_key)
+        if cached is not None:
+            return cached
+
         try:
             if engine == "edge_tts":
                 return self._generate_edge_tts(text, cache_key)
@@ -387,6 +408,97 @@ class TTSManager:
         except Exception as e:
             print(f"ERROR: TTS generation failed ({engine}): {e}")
         return None
+
+    # --- 读音预生成（prefetch）---
+
+    def prefetch(self, text: str, front: bool = False) -> None:
+        """把文本加入读音预生成队列，由唯一的后台线程串行生成进缓存。
+
+        front=True 时插到队列最前：给"用户马上就可能点到的音频"用
+        （如当前卡片的单词和例句），不让它排在成批待预取单词后面。
+        复习是逐张卡片进行的，串行生成完全跟得上节奏；
+        等真正点到"朗读"时音频已在缓存里，命中即播、零延迟。
+        """
+        if self.uses_direct_playback():
+            return  # anki_native / apple_tts 直接播放，没有可预生成的音频缓存
+
+        text = _clean_text_for_tts(text)
+        if not text:
+            return
+
+        engine = get_config().get("tts_engine", "edge_tts")
+        cache_key = f"{engine}:{text}"
+
+        with self._prefetch_lock:
+            if cache_key in self._cache or cache_key in self._prefetch_queued:
+                return
+            self._prefetch_queued.add(cache_key)
+            self._ensure_prefetch_thread()
+            # 入队也在锁内，保证任务按入队顺序进队列
+            with self._prefetch_cond:
+                if front:
+                    self._prefetch_deque.appendleft((cache_key, text))
+                else:
+                    self._prefetch_deque.append((cache_key, text))
+                self._prefetch_cond.notify()
+
+    def prefetch_words(self, keywords) -> None:
+        """批量预生成后续卡片单词的读音。
+
+        与卡片模板的朗读按钮保持一致：先剔除括号内的释义注释
+        （如 bank(银行) -> bank），保证预生成的 cache_key 与实际点击
+        朗读时请求的 cache_key 完全相同。
+        """
+        for keyword in keywords or []:
+            if not keyword:
+                continue
+            word = re.sub(r'[（(].*?[）)]', '', keyword).strip() or keyword
+            self.prefetch(word)
+
+    def _ensure_prefetch_thread(self) -> None:
+        """确保预生成线程存活（只在 _prefetch_lock 内调用）。"""
+        if self._prefetch_thread is not None and self._prefetch_thread.is_alive():
+            return
+        self._prefetch_thread = threading.Thread(
+            target=self._prefetch_worker, name="TTSPrefetch", daemon=True
+        )
+        self._prefetch_thread.start()
+
+    def _prefetch_worker(self) -> None:
+        """串行消费预生成队列的唯一后台线程。"""
+        while True:
+            with self._prefetch_cond:
+                while not self._prefetch_deque:
+                    self._prefetch_cond.wait()
+                item = self._prefetch_deque.popleft()
+
+            if item is None:  # stop_prefetch 的退出哨兵
+                with self._prefetch_lock:
+                    self._prefetch_thread = None  # 允许之后重新启动
+                break
+
+            cache_key, text = item
+            try:
+                if cache_key not in self._cache:
+                    print(f"DEBUG: TTS 预生成: {text}")
+                    self.generate(text)
+            except Exception as e:
+                print(f"ERROR: TTS prefetch failed: {e}")
+            finally:
+                # 从"已入队"集合移除：生成失败时下次渲染会自动重试
+                with self._prefetch_lock:
+                    self._prefetch_queued.discard(cache_key)
+
+        print("DEBUG: TTS prefetch thread stopped.")
+
+    def stop_prefetch(self) -> None:
+        """清空预生成队列并让后台线程退出（profile 关闭时调用）。"""
+        with self._prefetch_lock:
+            self._prefetch_queued.clear()
+        with self._prefetch_cond:
+            self._prefetch_deque.clear()
+            self._prefetch_deque.append(None)  # 退出哨兵
+            self._prefetch_cond.notify()
 
     def _generate_edge_tts(self, text: str, cache_key: str):
         """Generate audio with edge-tts. Returns (bytes, ext) or None.

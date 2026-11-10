@@ -17,3 +17,9 @@ pyproject.toml
 web-src/node_modules/
 web-src/package-lock.json
 web-src/pnpm-lock.yaml
+
+# AI 辅助交接与 Skill 文档（不作为项目源码提交）
+AGENT.md
+.opencode/
+.claude/
+.agents/

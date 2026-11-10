@@ -384,6 +384,9 @@ class AIExplanationDialog(QDialog):
 
     def _add_message_bubble(self, text: str, sender: str) -> MessageBubble:
         bubble = MessageBubble(text, sender, parent_dialog=self)
+        if sender == 'ai':
+            # 只在气泡创建时连接一次，避免每个例句块都重复连接导致保存多次
+            bubble.example_sentence_requested.connect(self._handle_example_sentence_request)
         self.conversation_layout.insertWidget(self.conversation_layout.count() - 1, bubble)
         self._scroll_to_bottom()
         return bubble
@@ -571,7 +574,6 @@ class AIExplanationDialog(QDialog):
                     translation = example_data.get("translation", "")
                     if sentence and translation and self.current_ai_bubble:
                         self.current_ai_bubble.add_example_sentence_block(sentence, translation)
-                        self.current_ai_bubble.example_sentence_requested.connect(self._handle_example_sentence_request)
                 except json.JSONDecodeError:
                     # 如果JSON解析失败，保留原始匹配内容
                     full_match = match.group(0)

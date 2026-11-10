@@ -157,8 +157,16 @@ def _prepare_target_sentence(card, base_deck_name, field_index_match):
 
         # 预取后续卡片例句（复用桌面端逻辑）
         try:
-            upcoming_keywords = main_logic._task_manager.get_upcoming_card_keywords(base_deck_name)
+            upcoming_keywords = main_logic._task_manager.get_upcoming_card_keywords(base_deck_name, include_cached=True)
             main_logic._task_manager.reorganize_queue(upcoming_keywords)
+            from .tts.tts_manager import tts_manager
+            # 当前卡片的单词和例句插队预生成：手机端没有自动播放，
+            # 读音只在用户点击时请求，插队保证点击时已生成完毕。
+            # sentence 含 <u> 标记，generate 内部清洗后与前端 stripHtml 发回的文本一致。
+            tts_manager.prefetch(speak_keyword, front=True)
+            tts_manager.prefetch(sentence, front=True)
+            # 后续卡片的单词读音按复习顺序排在当前卡片后面
+            tts_manager.prefetch_words(upcoming_keywords)
         except Exception as e:
             print(f"[ContextFlow Web] 预取失败: {e}")
 

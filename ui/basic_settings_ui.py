@@ -22,6 +22,11 @@ class NoWheelComboBox(QComboBox):
     def wheelEvent(self, event):
         event.ignore()
 
+# Custom SpinBox to ignore wheel events (避免浏览设置页时滚轮误改数值)
+class NoWheelSpinBox(QSpinBox):
+    def wheelEvent(self, event):
+        event.ignore()
+
 def add_api_setting(parent_dialog, basic_layout, current_config):
     api_group = QGroupBox("API 设置")
     api_layout = QFormLayout()
@@ -161,7 +166,7 @@ def add_Preferences_setting(parent_dialog, basic_layout, current_config):
         current_config.get("second_keywords_enabled", True)
     )
 
-    parent_dialog.second_keywords_top_n = QSpinBox()
+    parent_dialog.second_keywords_top_n = NoWheelSpinBox()
     parent_dialog.second_keywords_top_n.setRange(30, 3000)
     parent_dialog.second_keywords_top_n.setValue(
         current_config.get("second_keywords_top_n", 100)
@@ -280,7 +285,7 @@ def add_othersetting(parent_dialog, basic_layout, current_config):
     parent_dialog.web_enabled = QCheckBox("启用 Web 后端服务")
     parent_dialog.web_enabled.setChecked(current_config.get("web_enabled", True))
 
-    parent_dialog.web_port = QSpinBox()
+    parent_dialog.web_port = NoWheelSpinBox()
     parent_dialog.web_port.setRange(1024, 65535)
     parent_dialog.web_port.setValue(current_config.get("web_port", 8765))
 

@@ -328,8 +328,8 @@ def get_card_template_back() -> str:
         <div class="tts-btn-group">
             <div class="tts-btn" onclick="pycmd('play:a:0')"><span class="tts-label">朗读例句</span></div>
         </div>
+        <div style="position: absolute; bottom: 8px; left: 15px; font-size: 10px; color: #999;">{{{{来源}}}}</div>
     </div>
-    <div style="position: absolute; bottom: 10px; right: 10px; font-size: 10px; color: #999;">{{{{来源}}}}</div>
 </div>
 """
 

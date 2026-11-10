@@ -163,8 +163,12 @@ class SentenceTaskManager:
             for priority, kw in updated_tasks:
                 self.task_queue.put((priority, kw))
 
-    def get_upcoming_card_keywords(self, deck_name):
-        """获取接下来的卡片关键词（调度器队列+学习中卡片），并过滤掉已有缓存的关键词"""
+    def get_upcoming_card_keywords(self, deck_name, include_cached=False):
+        """获取接下来的卡片关键词（调度器队列+学习中卡片）
+
+        include_cached=False（默认）：过滤掉已有例句缓存的关键词，用于例句预生成。
+        include_cached=True：返回全部即将到来的关键词，用于读音预生成等。
+        """
         is_single_threaded = self.executor is not None and self.max_workers == 1
         fetch_limit = 100 if is_single_threaded else 20
 
@@ -183,20 +187,20 @@ class SentenceTaskManager:
         seen_keywords = set()
         keywords = []
 
-        for kw in self._iter_card_keywords(queued_cards, deck_name, use_backend=True):
+        for kw in self._iter_card_keywords(queued_cards, deck_name, use_backend=True, include_cached=include_cached):
             if kw not in seen_keywords:
                 seen_keywords.add(kw)
                 keywords.append(kw)
 
-        for kw in self._iter_card_keywords(learn_cards, deck_name, use_backend=False):
+        for kw in self._iter_card_keywords(learn_cards, deck_name, use_backend=False, include_cached=include_cached):
             if kw not in seen_keywords:
                 seen_keywords.add(kw)
                 keywords.append(kw)
 
         return keywords
 
-    def _iter_card_keywords(self, cards, deck_name, use_backend=True):
-        """从卡片列表中提取目标牌组的关键词（已过滤缓存）"""
+    def _iter_card_keywords(self, cards, deck_name, use_backend=True, include_cached=False):
+        """从卡片列表中提取目标牌组的关键词（默认已过滤例句缓存）"""
         for card_or_queued in cards:
             try:
                 if use_backend:
@@ -212,7 +216,7 @@ class SentenceTaskManager:
                 first_field = note.fields[0] if note.fields else ""
                 cleaned_keyword = clean_html(first_field)
 
-                if cleaned_keyword and not load_cache(cleaned_keyword):
+                if cleaned_keyword and (include_cached or not load_cache(cleaned_keyword)):
                     yield cleaned_keyword
             except Exception:
                 continue

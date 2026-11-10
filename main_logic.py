@@ -200,8 +200,12 @@ def _render_question_side(card, base_deck_name, field_index_match):
 
     # 预加载后续卡片
     try:
-        upcoming_keywords = _task_manager.get_upcoming_card_keywords(base_deck_name)
+        upcoming_keywords = _task_manager.get_upcoming_card_keywords(base_deck_name, include_cached=True)
         _task_manager.reorganize_queue(upcoming_keywords)
+        # 后续卡片的单词读音也提前生成进 TTS 缓存（单一后台线程串行生成），
+        # 点到"朗读单词"时直接命中缓存，消除首击延迟。
+        # reorganize_queue 内部会自行过滤已有例句缓存的关键词，行为不变。
+        tts_manager.prefetch_words(upcoming_keywords)
     except Exception as e:
         print(f"ERROR: Failed to preload and reorganize task queue: {e}")
 
@@ -307,6 +311,7 @@ def stop_worker():
     global executor, max_workers
     _finish_wait_session()
     _task_manager.stop()
+    tts_manager.stop_prefetch()
     executor = None
     max_workers = 0
 
