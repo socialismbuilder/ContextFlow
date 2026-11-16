@@ -11,7 +11,7 @@ from .config_manager import get_config, clean_html
 from .cache.cache_manager import load_cache, pop_cache
 from .card.card_template_manager import get_processed_back_html, get_processed_front_html
 from .tts.tts_manager import tts_manager
-from .ui.stats import add_stats
+from .tts.tts_manager import shutdown_tts_loop
 from .task_manager import SentenceTaskManager
 
 # --- 单例实例 ---
@@ -312,6 +312,7 @@ def stop_worker():
     _finish_wait_session()
     _task_manager.stop()
     tts_manager.stop_prefetch()
+    shutdown_tts_loop()
     executor = None
     max_workers = 0
 
@@ -413,7 +414,14 @@ def register_hooks():
     gui_hooks.reviewer_will_play_answer_sounds.append(_block_native_audio)
 
     gui_hooks.profile_will_close.append(stop_worker)
-    gui_hooks.stats_dialog_will_show.append(add_stats)
+
+    # 向原生统计页注入『卡片平均用时』模块（按原生样式，复用原生 CSS 类）
+    try:
+        from .ui.avg_time_injection import inject_avg_time_on_open
+        gui_hooks.stats_dialog_will_show.append(inject_avg_time_on_open)
+        print("DEBUG: 原生统计『卡片平均用时』注入已启用")
+    except Exception as e:
+        print(f"ERROR: 注册统计用时注入失败: {e}")
 
     try:
         from .ui import context_menu

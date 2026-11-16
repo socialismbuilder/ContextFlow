@@ -54,6 +54,12 @@ const dirSvg = {
     right: '<svg xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24"><path d="M0 0h24v24H0z" fill="none"/><path fill="currentColor" d="m12 14.052l1.65 1.015q.217.137.444-.022q.227-.158.172-.426l-.443-1.886l1.47-1.264q.21-.186.12-.431q-.09-.246-.363-.27l-1.917-.176l-.76-1.761q-.106-.242-.373-.242t-.373.242l-.76 1.761l-1.917.175q-.273.025-.363.27t.12.432l1.47 1.264l-.442 1.886q-.056.268.17.426q.228.159.445.022zM9.073 19H6.616q-.672 0-1.144-.472T5 17.385v-2.458l-1.79-1.796q-.237-.243-.349-.538T2.75 12t.112-.593t.347-.538L5 9.073V6.616q0-.672.472-1.144T6.616 5h2.457l1.796-1.79q.243-.237.538-.349T12 2.75t.593.112t.538.347L14.927 5h2.458q.67 0 1.143.472q.472.472.472 1.144v2.457l1.79 1.796q.237.243.349.538t.111.593t-.111.593t-.348.538L19 14.927v2.458q0 .67-.472 1.143q-.472.472-1.143.472h-2.458l-1.796 1.79q-.243.237-.538.349T12 21.25t-.593-.111t-.538-.348zm.427-1l2.058 2.058q.173.173.442.173t.442-.173L14.5 18h2.885q.269 0 .442-.173t.173-.442V14.5l2.058-2.058q.173-.173.173-.442t-.173-.442L18 9.5V6.616q0-.27-.173-.443T17.385 6H14.5l-2.058-2.058Q12.27 3.77 12 3.77t-.442.173L9.5 6H6.616q-.27 0-.443.173T6 6.616V9.5l-2.058 2.058q-.173.173-.173.442t.173.442L6 14.5v2.885q0 .269.173.442t.443.173zm2.5-6"/></svg>',
 };
 
+const FAB_POS_KEY = 'cf-fab-position';
+
+function saveFabPosition() {
+    try { localStorage.setItem(FAB_POS_KEY, JSON.stringify({ x: fabPos.x, y: fabPos.y })); } catch (_) { /* 隐私模式等场景下不可用，忽略 */ }
+}
+
 function setFabPosition(x, y) {
     const maxX = window.innerWidth - 56;
     const maxY = window.innerHeight - 56;
@@ -63,6 +69,21 @@ function setFabPosition(x, y) {
     container.value.style.top = fabPos.y + 'px';
     container.value.style.right = 'auto';
     container.value.style.bottom = 'auto';
+    // 拖拽过程中高频调用，结束时统一保存（见 handleTouchEnd / onMouseUp）
+    if (!isDragging) saveFabPosition();
+}
+
+function loadFabPosition() {
+    let saved = null;
+    try {
+        const raw = localStorage.getItem(FAB_POS_KEY);
+        if (raw) {
+            const parsed = JSON.parse(raw);
+            if (parsed && Number.isFinite(parsed.x) && Number.isFinite(parsed.y)) saved = parsed;
+        }
+    } catch (_) { /* 数据损坏或 localStorage 不可用，回退默认位置 */ }
+    if (saved) setFabPosition(saved.x, saved.y);
+    else setFabPosition(window.innerWidth - 72, window.innerHeight - 140);
 }
 
 function getDirection(dx, dy) {
@@ -144,7 +165,11 @@ function handleTouchEnd(e) {
     const dy = touch.clientY - startY;
     const dist = Math.sqrt(dx * dx + dy * dy);
 
-    if (isDragging) { isDragging = false; hideDirection(); lastTapTime = 0; return; }
+    if (isDragging) {
+        isDragging = false;
+        saveFabPosition(); // 拖拽期间 setFabPosition 不落盘，结束时统一保存
+        hideDirection(); lastTapTime = 0; return;
+    }
     if (currentDirection && dist < 30) { hideDirection(); lastTapTime = 0; return; }
     if (currentDirection && props.answerVisible) {
         const action = DIRECTIONS[currentDirection];
@@ -220,7 +245,7 @@ function onMouseUp(e) {
     const dx = e.clientX - startX;
     const dy = e.clientY - startY;
     const dist = Math.sqrt(dx * dx + dy * dy);
-    if (isDragging) { isDragging = false; hideDirection(); return; }
+    if (isDragging) { isDragging = false; saveFabPosition(); hideDirection(); return; }
     if (currentDirection && dist < 30) { hideDirection(); return; }
     if (currentDirection && props.answerVisible) {
         const action = DIRECTIONS[currentDirection];
@@ -241,8 +266,7 @@ function onResize() {
 
 onMounted(() => {
     volumeSvg = fab.value.innerHTML;
-    fabPos = { x: window.innerWidth - 72, y: window.innerHeight - 140 };
-    setFabPosition(fabPos.x, fabPos.y);
+    loadFabPosition();
 
     fab.value.addEventListener('touchstart', handleTouchStart, { passive: true });
     fab.value.addEventListener('touchmove', handleTouchMove, { passive: false });

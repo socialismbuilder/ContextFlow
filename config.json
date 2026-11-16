@@ -11,7 +11,7 @@
     "learning_language":"英语",
     "prompt_name": "默认-不标记目标词",
     "preset_api_urls": {
-        "火山/豆包/字节（推荐）": "https://ark.cn-beijing.volces.com/api/v3/chat/completions",
+        "火山/豆包/字节": "https://ark.cn-beijing.volces.com/api/v3/chat/completions",
         "deepseek": "https://api.deepseek.com/v1/chat/completions",
         "OpenRouter": "https://openrouter.ai/api/v1/chat/completions",
         "硅基流动": "https://api.siliconflow.cn/v1/chat/completions",

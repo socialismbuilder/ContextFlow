@@ -18,6 +18,9 @@ web-src/node_modules/
 web-src/package-lock.json
 web-src/pnpm-lock.yaml
 
+# 统计 WebView 源码导出（调试用，非源码）
+stats_dump/
+
 # AI 辅助交接与 Skill 文档（不作为项目源码提交）
 AGENT.md
 .opencode/

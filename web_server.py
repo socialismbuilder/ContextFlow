@@ -17,6 +17,7 @@ from pathlib import Path
 from aiohttp import web
 
 from . import web_card
+from . import loop_utils
 
 # ── 全局状态 ──────────────────────────────────────────────────
 
@@ -56,7 +57,7 @@ def stop():
 
     # 1. 通知事件循环停止
     if loop is not None and loop.is_running():
-        loop.call_soon_threadsafe(loop.stop)
+        loop_utils.stop_loop_threadsafe(loop, "ContextFlow Web")
 
     # 2. 等待服务器线程真正退出（带超时保护）
     if thread is not None and thread.is_alive():
@@ -81,27 +82,48 @@ def _run_server(app: web.Application, port: int):
     # 设到 WARNING：保留真正的错误/警告，屏蔽 INFO 级的访问记录。
     logging.getLogger("aiohttp.access").setLevel(logging.WARNING)
 
-    loop = asyncio.new_event_loop()
+    loop = loop_utils.safe_new_loop("ContextFlow Web")
+    if loop is None:
+        return
     asyncio.set_event_loop(loop)
     _aiohttp_loop = loop
 
     _runner = web.AppRunner(app)
-    loop.run_until_complete(_runner.setup())
+    try:
+        loop.run_until_complete(_runner.setup())
+    except Exception as e:
+        print(f"[ContextFlow Web] 错误: 初始化 aiohttp AppRunner 失败: {e}")
+        loop_utils.close_loop(loop, "ContextFlow Web")
+        _runner = None
+        _aiohttp_loop = None
+        return
 
     site = web.TCPSite(_runner, "0.0.0.0", port)
-    loop.run_until_complete(site.start())
+    try:
+        loop.run_until_complete(site.start())
+    except Exception as e:
+        print(f"[ContextFlow Web] 错误: 监听端口 {port} 失败: {e}")
+        try:
+            loop.run_until_complete(_runner.cleanup())
+        except Exception as e2:
+            print(f"[ContextFlow Web] 警告: 清理 AppRunner 失败: {e2}")
+        loop_utils.close_loop(loop, "ContextFlow Web")
+        _runner = None
+        _aiohttp_loop = None
+        return
+
     print(f"[ContextFlow Web] 服务器已启动: http://0.0.0.0:{port}")
 
     try:
         loop.run_forever()
-    except Exception:
-        pass
+    except Exception as e:
+        print(f"[ContextFlow Web] 警告: 事件循环异常退出: {e}")
     finally:
         if _runner is not None:
             try:
                 loop.run_until_complete(_runner.cleanup())
-            except Exception:
-                pass
+            except Exception as e:
+                print(f"[ContextFlow Web] 警告: 清理 AppRunner 失败: {e}")
             _runner = None
         # 关闭事件循环的默认 executor（run_in_executor(None,...) 用的就是它）。
         # TTS 等后台任务可能在其 worker 线程中阻塞，shutdown(wait=False) 通知它们
@@ -112,10 +134,7 @@ def _run_server(app: web.Application, port: int):
                 ex.shutdown(wait=False)
         except Exception:
             pass
-        try:
-            loop.close()
-        except Exception:
-            pass
+        loop_utils.close_loop(loop, "ContextFlow Web")
 
 
 # ── 异步线程安全桥接 ──────────────────────────────────────────

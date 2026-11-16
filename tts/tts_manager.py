@@ -11,6 +11,65 @@ import threading
 from collections import deque
 
 from ..config_manager import get_config
+from .. import loop_utils
+
+# Edge TTS 的常驻事件循环：所有 edge-tts 生成共用同一个后台 loop 线程，
+# 不再每句话 new_event_loop + 新线程 + 新建环。
+# 背景：Windows 上频繁创建 ProactorEventLoop 一旦 socketpair 失败，
+# 会留下半成品 loop，在 Anki 退出时炸出
+# "'ProactorEventLoop' object has no attribute '_ssock'"（见 loop_utils 注释）。
+_tts_loop = None  # asyncio.AbstractEventLoop | None
+_tts_loop_lock = threading.Lock()
+
+
+def _get_tts_loop():
+    """获取（或首次创建）常驻 TTS 事件循环；创建失败返回 None。
+
+    线程安全：多路请求（预取线程 + Web 端并发）可能同时进来。
+    """
+    global _tts_loop
+    with _tts_loop_lock:
+        loop = _tts_loop
+        if loop is not None and not loop.is_closed():
+            return loop
+        loop = loop_utils.safe_new_loop("ContextFlow TTS")
+        if loop is None:
+            _tts_loop = None
+            return None
+        threading.Thread(
+            target=_run_tts_loop, args=(loop,), name="ContextFlowTTSLoop", daemon=True
+        ).start()
+        _tts_loop = loop
+        return loop
+
+
+def _run_tts_loop(loop):
+    """常驻 TTS 事件循环线程的主体：一直 run_forever，退出时收尾关闭。"""
+    import asyncio
+
+    asyncio.set_event_loop(loop)
+    try:
+        loop.run_forever()
+    except Exception as e:
+        print(f"[ContextFlow TTS] 警告: TTS 事件循环异常退出: {e}")
+    finally:
+        loop_utils.close_loop(loop, "ContextFlow TTS")
+
+
+def shutdown_tts_loop() -> None:
+    """停止常驻 TTS 事件循环线程（profile 关闭时调用；之后可按需重建）。"""
+    global _tts_loop
+    with _tts_loop_lock:
+        loop = _tts_loop
+        _tts_loop = None
+    if loop is None or loop.is_closed():
+        return
+    if loop.is_running():
+        loop_utils.stop_loop_threadsafe(loop, "ContextFlow TTS")
+    # run_forever 退出后的 shutdown_asyncgens/close 由 _run_tts_loop 的
+    # finally 负责，这里不 join：给线程一点收尾时间即可（daemon 线程，
+    # 就算没跑完，Anki 退出时 loop 也已被正确 closed，不会留下半成品）。
+    threading.Event().wait(0.2)
 
 # Language name -> edge-tts voice mapping
 TTS_VOICE_MAP = {
@@ -114,22 +173,21 @@ _voice_list_event = threading.Event()  # set() once the voice list has been fetc
 
 def _fetch_voice_list() -> list[dict]:
     """Fetch the full Edge TTS voice list from Microsoft's API synchronously.
-    Must be called from a background thread (creates its own event loop)."""
+    Must be called from a background thread (creates its own event loop,
+    一次性任务，用完即关；loop 创建失败时走 safe_new_loop 的兜底日志)."""
     import asyncio
     import edge_tts
-    loop = None
+    loop = loop_utils.safe_new_loop("ContextFlow TTS")
+    if loop is None:
+        return []
     try:
-        loop = asyncio.new_event_loop()
         try:
             voices = loop.run_until_complete(
                 asyncio.wait_for(edge_tts.list_voices(), timeout=20)
             )
             return voices
         finally:
-            try:
-                loop.close()
-            except Exception:
-                pass
+            loop_utils.close_loop(loop, "ContextFlow TTS")
     except asyncio.TimeoutError:
         print("WARNING: Fetching Edge TTS voice list timed out")
         return []
@@ -503,13 +561,16 @@ class TTSManager:
     def _generate_edge_tts(self, text: str, cache_key: str):
         """Generate audio with edge-tts. Returns (bytes, ext) or None.
 
-        关键：edge-tts 的同步接口 stream_sync() 内部用一个无超时的
-        ThreadPoolExecutor 运行事件循环。若微软服务器长时间无响应
-        （WebSocket keep-alive 挂起），worker 线程会永久阻塞，
-        进程退出时无法结束。这里改为独立线程 + 总超时 + 强制关闭事件循环，
-        保证线程一定能在超时后返回。
+        生成任务投递到常驻的 TTS 事件循环线程（_get_tts_loop），
+        不再每句话 new_event_loop + 新线程。
+
+        超时保护：内层 asyncio.wait_for(timeout) 负责取消挂起的
+        WebSocket 任务，loop 本身继续存活，不会被一条无响应的请求拖死；
+        外层 fut.result(timeout+5) 再兜一层底，保证调用方（预取线程 /
+        Web 端 executor 线程）一定能在时限内返回。
         """
         import asyncio
+        import concurrent.futures
         import edge_tts
 
         config = get_config()
@@ -519,6 +580,10 @@ class TTSManager:
         # edge-tts 单次生成的总超时（秒）。正常一句话几秒即可完成。
         timeout = 30
 
+        loop = _get_tts_loop()
+        if loop is None:
+            return None
+
         async def _collect():
             communicate = edge_tts.Communicate(text, voice)
             chunks = bytearray()
@@ -527,49 +592,26 @@ class TTSManager:
                     chunks.extend(chunk["data"])
             return bytes(chunks)
 
-        result_box = {}
+        async def _collect_with_timeout():
+            return await asyncio.wait_for(_collect(), timeout=timeout)
 
-        def _runner():
-            loop = None
-            try:
-                loop = asyncio.new_event_loop()
-                asyncio.set_event_loop(loop)
-                audio = loop.run_until_complete(
-                    asyncio.wait_for(_collect(), timeout=timeout)
-                )
-                result_box["audio"] = audio
-            except asyncio.TimeoutError:
-                print(f"WARNING: edge-tts 生成超时 ({timeout}s)，已取消")
-            except Exception as e:
-                print(f"WARNING: edge-tts 生成失败: {e}")
-            finally:
-                # 强制关闭事件循环：会取消所有未完成的任务（包括挂起的 WebSocket），
-                # 并等待它们真正退出，避免线程永久阻塞。
-                if loop is not None:
-                    try:
-                        loop.run_until_complete(loop.shutdown_asyncgens())
-                    except Exception:
-                        pass
-                    try:
-                        loop.close()
-                    except Exception:
-                        pass
+        fut = asyncio.run_coroutine_threadsafe(_collect_with_timeout(), loop)
+        audio = None
+        try:
+            audio = fut.result(timeout=timeout + 5)
+        except concurrent.futures.TimeoutError:
+            # Python 3.11+ 里 concurrent.futures.TimeoutError 与内建
+            # TimeoutError 同源，wait_for 的超时也会走到这里
+            print(f"WARNING: edge-tts 生成超时 ({timeout}s)，已取消")
+            fut.cancel()
+        except Exception as e:
+            print(f"WARNING: edge-tts 生成失败: {e}")
 
-        # 用独立线程跑事件循环，方便在超时后彻底释放
-        t = threading.Thread(target=_runner, daemon=True)
-        t.start()
-        t.join(timeout=timeout + 10)  # 给清理留余量
-
-        if t.is_alive():
-            # 极端情况：连清理都没在时限内完成。线程为 daemon，Python 退出时会被强制回收。
-            print("WARNING: edge-tts 生成线程未能在时限内退出（daemon 化）")
-
-        audio_data = result_box.get("audio")
-        if not audio_data:
+        if not audio:
             return None
 
-        self._cache[cache_key] = (audio_data, ".mp3")
-        return (audio_data, ".mp3")
+        self._cache[cache_key] = (audio, ".mp3")
+        return (audio, ".mp3")
 
     def _play_anki_native(self, text: str):
         from anki.sound import TTSTag

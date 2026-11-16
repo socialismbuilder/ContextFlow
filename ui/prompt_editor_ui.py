@@ -209,7 +209,7 @@ def test_prompt_template(parent_dialog):
     prompt = parent_dialog.prompt_template_edit.toPlainText()
     test_config = get_config()
     second_keywords_str = "strand,exasperated,grudgingly,guerrilla,parish,extent,casino,carousel,hypocritical,hunch"
-    second_keywords_str = "- 在保证句子流畅的前提下，可以在每个例句中尝试融入若干以下词汇（" + second_keywords_str + "），不限制每句融入几个，也不强制融入，但必须以句子自然流畅为前提。"
+    second_keywords_str = "\n6. 拓展融入：在保证句子自然流畅的前提下，可顺势在例句中融入以下词汇中的 0-3 个（非强制，以自然流畅为先）：" + second_keywords_str
     try:
         formatted_prompt = prompt.format(
             world=keyword,
