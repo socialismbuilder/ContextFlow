@@ -200,7 +200,9 @@ def _render_question_side(card, base_deck_name, field_index_match):
 
     # 预加载后续卡片
     try:
-        upcoming_keywords = _task_manager.get_upcoming_card_keywords(base_deck_name, include_cached=True)
+        field_index = int(field_index_match.group(1)) - 1 if field_index_match else 0
+        upcoming_keywords = _task_manager.get_upcoming_card_keywords(
+            base_deck_name, field_index=max(field_index, 0), include_cached=True)
         _task_manager.reorganize_queue(upcoming_keywords)
         # 后续卡片的单词读音也提前生成进 TTS 缓存（单一后台线程串行生成），
         # 点到"朗读单词"时直接命中缓存，消除首击延迟。

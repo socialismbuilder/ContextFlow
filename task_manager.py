@@ -163,9 +163,10 @@ class SentenceTaskManager:
             for priority, kw in updated_tasks:
                 self.task_queue.put((priority, kw))
 
-    def get_upcoming_card_keywords(self, deck_name, include_cached=False):
+    def get_upcoming_card_keywords(self, deck_name, field_index=0, include_cached=False):
         """获取接下来的卡片关键词（调度器队列+学习中卡片）
 
+        field_index：配置的 [N] 字段索引（0 起），与渲染取词逻辑保持一致。
         include_cached=False（默认）：过滤掉已有例句缓存的关键词，用于例句预生成。
         include_cached=True：返回全部即将到来的关键词，用于读音预生成等。
         """
@@ -187,20 +188,24 @@ class SentenceTaskManager:
         seen_keywords = set()
         keywords = []
 
-        for kw in self._iter_card_keywords(queued_cards, deck_name, use_backend=True, include_cached=include_cached):
+        for kw in self._iter_card_keywords(queued_cards, deck_name, field_index=field_index, use_backend=True, include_cached=include_cached):
             if kw not in seen_keywords:
                 seen_keywords.add(kw)
                 keywords.append(kw)
 
-        for kw in self._iter_card_keywords(learn_cards, deck_name, use_backend=False, include_cached=include_cached):
+        for kw in self._iter_card_keywords(learn_cards, deck_name, field_index=field_index, use_backend=False, include_cached=include_cached):
             if kw not in seen_keywords:
                 seen_keywords.add(kw)
                 keywords.append(kw)
 
         return keywords
 
-    def _iter_card_keywords(self, cards, deck_name, use_backend=True, include_cached=False):
-        """从卡片列表中提取目标牌组的关键词（默认已过滤例句缓存）"""
+    def _iter_card_keywords(self, cards, deck_name, field_index=0, use_backend=True, include_cached=False):
+        """从卡片列表中提取目标牌组的关键词（默认已过滤例句缓存）
+
+        field_index 与渲染侧 _extract_keyword 一致：配置的 [N] 字段（0 起），
+        越界或非法时回退到第一个字段。
+        """
         for card_or_queued in cards:
             try:
                 if use_backend:
@@ -213,7 +218,9 @@ class SentenceTaskManager:
                     continue
 
                 note = upcoming_card.note()
-                first_field = note.fields[0] if note.fields else ""
+                if field_index < 0 or (note.fields and field_index >= len(note.fields)):
+                    field_index = 0
+                first_field = note.fields[field_index] if note.fields else ""
                 cleaned_keyword = clean_html(first_field)
 
                 if cleaned_keyword and (include_cached or not load_cache(cleaned_keyword)):

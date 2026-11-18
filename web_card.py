@@ -157,7 +157,9 @@ def _prepare_target_sentence(card, base_deck_name, field_index_match):
 
         # 预取后续卡片例句（复用桌面端逻辑）
         try:
-            upcoming_keywords = main_logic._task_manager.get_upcoming_card_keywords(base_deck_name, include_cached=True)
+            field_index = int(field_index_match.group(1)) - 1 if field_index_match else 0
+            upcoming_keywords = main_logic._task_manager.get_upcoming_card_keywords(
+                base_deck_name, field_index=max(field_index, 0), include_cached=True)
             main_logic._task_manager.reorganize_queue(upcoming_keywords)
             from .tts.tts_manager import tts_manager
             # 当前卡片的单词和例句插队预生成：手机端没有自动播放，
