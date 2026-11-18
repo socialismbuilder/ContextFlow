@@ -185,10 +185,12 @@ def _create_app(mw) -> web.Application:
     app.router.add_post("/api/card/answer", _handle_card_answer)
     app.router.add_get("/api/card/sentence", _handle_card_sentence)
     app.router.add_post("/api/card/refresh_sentence", _handle_card_refresh_sentence)
+    app.router.add_post("/api/card/save_sentence", _handle_card_save_sentence)
     app.router.add_get("/api/undo/status", _handle_undo_status)
     app.router.add_post("/api/undo", _handle_undo)
     app.router.add_get("/api/tts/{text:.*}", _handle_tts)
     app.router.add_post("/api/ai/chat", _handle_ai_chat)
+    app.router.add_post("/api/ai/save_sentence", _handle_ai_save_sentence)
     app.router.add_post("/api/sync", _handle_sync)
     app.router.add_get("/api/sync/status", _handle_sync_status)
 
@@ -304,6 +306,15 @@ async def _handle_card_refresh_sentence(request: web.Request) -> web.Response:
         return web.json_response({"error": "主线程繁忙，请稍后重试"}, status=503)
     if data.get("status") == "card":
         _session["current_card_id"] = data["card_id"]
+    return web.json_response(data)
+
+
+async def _handle_card_save_sentence(request: web.Request) -> web.Response:
+    """保存当前卡片的例句到收藏牌组（复用桌面端 create_sentence_card）。"""
+    mw = request.app["mw"]
+    data = await run_on_main_async(mw, lambda: web_card.save_sentence(mw))
+    if data is None:
+        return web.json_response({"error": "主线程繁忙，请稍后重试"}, status=503)
     return web.json_response(data)
 
 
@@ -442,6 +453,26 @@ async def _handle_ai_chat(request: web.Request) -> web.StreamResponse:
         except Exception:
             pass
     return resp
+
+
+# ── AI 解释例句保存 ──────────────────────────────────────────
+
+async def _handle_ai_save_sentence(request: web.Request) -> web.Response:
+    """保存 AI 解释中生成的例句到收藏牌组。POST {sentence, translation}。"""
+    try:
+        body = await request.json()
+    except Exception:
+        return web.json_response({"error": "请求体不是合法 JSON"}, status=400)
+
+    sentence = (body.get("sentence") or "").strip()
+    translation = (body.get("translation") or "").strip()
+    if not sentence:
+        return web.json_response({"error": "缺少 sentence"}, status=400)
+
+    data = await run_on_main_async(
+        mw, lambda: web_card.save_example_sentence(mw, sentence, translation))
+    status = 200 if data.get("status") == "saved" else 400
+    return web.json_response(data, status=status)
 
 
 # ── AnkiWeb 云端同步 ──────────────────────────────────────────

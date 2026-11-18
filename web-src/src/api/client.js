@@ -57,6 +57,9 @@ export const getSentence = () => request('GET', '/api/card/sentence');
 // POST /api/card/refresh_sentence -> 同 /api/card/next 卡片形状，或 {status:"error", error}
 export const refreshSentence = () => request('POST', '/api/card/refresh_sentence');
 
+// POST /api/card/save_sentence -> {status:"saved", save_deck} | {status:"error", error}
+export const saveSentence = () => request('POST', '/api/card/save_sentence');
+
 // ── 撤回 ──────────────────────────────────────────────────
 // GET /api/undo/status -> {can_undo, undo_name}
 export const getUndoStatus = () => request('GET', '/api/undo/status');
@@ -71,6 +74,10 @@ export const mediaUrl = (p) => '/media/' + p;
 // ── AI 流式对话（SSE over POST）──────────────────────────
 // 调用方用 useSSE，这里只暴露底层 streamChat 不直接用。
 export const AI_CHAT_URL = '/api/ai/chat';
+
+// POST /api/ai/save_sentence {sentence, translation} -> {status:"saved", save_deck} | {error}
+export const saveExampleSentence = (sentence, translation) =>
+    request('POST', '/api/ai/save_sentence', { sentence, translation });
 
 // ── AnkiWeb 云端同步 ─────────────────────────────────────
 // POST /api/sync -> {status:"sync_triggered"|"already_syncing"|"not_logged_in"}

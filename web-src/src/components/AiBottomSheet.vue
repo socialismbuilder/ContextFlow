@@ -44,7 +44,7 @@
             </div>
 
             <!-- 对话区 -->
-            <div id="ai-conversation" ref="conversation" class="ai-conversation">
+            <div id="ai-conversation" ref="conversation" class="ai-conversation" @click="onConversationClick">
                 <div
                     v-for="(b, i) in bubbles"
                     :key="i"
@@ -74,7 +74,8 @@
 <script setup>
 import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue';
 import { streamChat } from '../composables/useSSE.js';
-import { escapeHtml } from '../utils/text.js';
+import { escapeHtml, highlightHtml } from '../utils/text.js';
+import { saveExampleSentence } from '../api/client.js';
 
 const props = defineProps({
     sentence: { type: String, default: '' },
@@ -329,6 +330,85 @@ function showErrorBubble(message) {
     });
 }
 
+// ── AI 例句解析与保存 ──────────────────────────────────
+// 与桌面端 ai_explanation_dialog 同一契约：回答末尾附 ```json {"sentence","translation"}```。
+// 流结束后解析出例句，从正文剥离，渲染为例句卡片（带"保存例句"按钮）。
+const EXAMPLE_JSON_RE = /(```json\s*)?(\{[\s\S]*?"sentence"[\s\S]*?\})(\s*```)?/g;
+
+function escapeAttr(text) {
+    return escapeHtml(text).replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
+function extractExamples(raw) {
+    const examples = [];
+    const cleaned = raw.replace(EXAMPLE_JSON_RE, (match, _f, jsonStr) => {
+        try {
+            const data = JSON.parse(jsonStr);
+            const sentence = (data.sentence || '').trim();
+            const translation = (data.translation || '').trim();
+            if (sentence && translation) {
+                examples.push({ sentence, translation });
+                return ''; // 从正文剥离
+            }
+        } catch { /* JSON 不完整/非法时保留原文 */ }
+        return match;
+    });
+    return { cleaned: cleaned.replace(/\n{3,}/g, '\n\n').trim(), examples };
+}
+
+function renderFinalBubble(raw) {
+    if (currentBubbleIdx < 0) return;
+    const { cleaned, examples } = extractExamples(raw);
+    let html;
+    try {
+        html = window.marked ? window.marked.parse(cleaned) : escapeHtml(cleaned);
+    } catch {
+        html = escapeHtml(cleaned);
+    }
+    for (const ex of examples) {
+        html += `
+<div class="ai-example-block">
+  <div class="ai-example-title">例句</div>
+  <div class="ai-example-sentence">${highlightHtml(ex.sentence)}</div>
+  <div class="ai-example-translation">${escapeHtml(ex.translation)}</div>
+  <button class="ai-example-save"
+          data-sentence="${escapeAttr(ex.sentence)}"
+          data-translation="${escapeAttr(ex.translation)}">保存例句</button>
+</div>`;
+    }
+    bubbles.value[currentBubbleIdx].html = html;
+    nextTick(() => {
+        if (conversation.value) conversation.value.scrollTop = conversation.value.scrollHeight;
+    });
+}
+
+async function onSaveExample(btn) {
+    const sentence = btn.dataset.sentence || '';
+    const translation = btn.dataset.translation || '';
+    if (!sentence || btn.disabled) return;
+    btn.disabled = true;
+    btn.textContent = '保存中...';
+    try {
+        const res = await saveExampleSentence(sentence, translation);
+        if (res && res.status === 'saved') {
+            btn.textContent = `已保存到 ${res.save_deck || '收藏牌组'} ✓`;
+            btn.classList.add('saved');
+        } else {
+            throw new Error((res && res.error) || '保存失败');
+        }
+    } catch (e) {
+        btn.disabled = false;
+        btn.textContent = '保存失败，点击重试';
+        console.error('保存例句失败:', e);
+    }
+}
+
+// v-html 内的按钮无法绑定 Vue 事件，用容器级事件委托
+function onConversationClick(e) {
+    const btn = e.target.closest('.ai-example-save');
+    if (btn) onSaveExample(btn);
+}
+
 function explain() {
     if (streaming.value) return;
     const word = aiMode.value === 'keyword' ? props.keyword : selectedText.value;
@@ -368,11 +448,12 @@ async function startStream(word, userFollowup) {
     );
 
     streaming.value = false;
-    currentBubbleIdx = -1;
     abortController = null;
     if (fullContent) {
         history.push({ role: 'assistant', content: fullContent });
+        renderFinalBubble(fullContent);  // 必须在置 -1 之前，否则气泡定位失败直接返回
     }
+    currentBubbleIdx = -1;
 }
 
 function sendFollowup() {

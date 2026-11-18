@@ -472,6 +472,67 @@ def refresh_sentence(mw) -> dict:
     return _render_card_data(mw, card)
 
 
+# ── 例句保存 ──────────────────────────────────────────────────
+
+def save_sentence(mw) -> dict:
+    """
+    保存当前卡片的例句到收藏牌组（复用桌面端 create_sentence_card）：
+      - 仅 target 模式（例句牌组）的卡片可保存，例句取自
+        main_logic.showing_*（与 get_answer 同一数据源）；
+      - 目标牌组名来自配置 save_deck（不存在则自动创建）。
+    """
+    from .config_manager import get_config
+    from . import main_logic
+    from .card.anki_card_creator import create_sentence_card
+
+    card = mw.col.sched.getCard()
+    if not card:
+        return {"status": "error", "error": "没有当前卡片"}
+
+    config = get_config()
+    config_deck_name = config.get("deck_name") or ""
+    field_index_match = re.search(r'\[(\d+)\]$', config_deck_name)
+    base_deck_name = re.sub(r'\[\d+\]$', '', config_deck_name) if field_index_match else config_deck_name
+    current_deck = mw.col.decks.name(card.did)
+
+    if not _is_target_deck(card, current_deck, base_deck_name):
+        return {"status": "error", "error": "仅例句牌组的卡片支持保存"}
+
+    sentence = main_logic.showing_sentence
+    translation = main_logic.showing_translation
+    if not sentence or sentence == "例句生成中...":
+        return {"status": "error", "error": "例句尚未生成，请稍后再试"}
+
+    save_deck = config.get("save_deck", "收藏例句")
+    if not create_sentence_card(sentence, translation, save_deck):
+        return {"status": "error", "error": f"保存失败，请检查牌组 '{save_deck}' 配置"}
+
+    return {"status": "saved", "save_deck": save_deck}
+
+
+def save_example_sentence(mw, sentence: str, translation: str) -> dict:
+    """
+    保存 AI 解释中生成的例句到收藏牌组（Web 端 AI 面板"保存例句"按钮）：
+      - 与 save_sentence 复用 create_sentence_card，但例句来源是 AI 对话
+        输出中的 JSON 例句，而非当前卡片的展示例句；
+      - 目标牌组名来自配置 save_deck（不存在则自动创建）。
+    """
+    from .config_manager import get_config
+    from .card.anki_card_creator import create_sentence_card
+
+    sentence = (sentence or "").strip()
+    translation = (translation or "").strip()
+    if not sentence:
+        return {"status": "error", "error": "例句内容为空"}
+
+    config = get_config()
+    save_deck = config.get("save_deck", "收藏例句")
+    if not create_sentence_card(sentence, translation, save_deck):
+        return {"status": "error", "error": f"保存失败，请检查牌组 '{save_deck}' 配置"}
+
+    return {"status": "saved", "save_deck": save_deck}
+
+
 # ── 牌组操作 ──────────────────────────────────────────────────
 
 def get_decks(mw) -> list:

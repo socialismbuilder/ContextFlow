@@ -30,6 +30,21 @@
                 </div>
                 <div class="tts-right">
                     <div
+                        v-if="mode === 'target'"
+                        ref="saveBtn"
+                        class="tts-btn save-btn"
+                        :class="{ 'save-done': saved, loading: saving }"
+                        :title="saved ? '已保存' : '保存例句到收藏牌组'"
+                        @click="!saved && !saving && $emit('save')"
+                    >
+                        <svg xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24">
+                            <path d="M0 0h24v24H0z" fill="none"/>
+                            <path v-if="saved" fill="currentColor" d="M9 16.2L4.8 12l-1.4 1.4L9 19L21 7l-1.4-1.4z"/>
+                            <path v-else fill="currentColor" d="M17 3H7a2 2 0 0 0-2 2v16l7-3l7 3V5a2 2 0 0 0-2-2m0 15l-5-2.18L7 18V5h10z"/>
+                        </svg>
+                        <span class="tts-label">{{ saved ? '已保存' : '保存例句' }}</span>
+                    </div>
+                    <div
                         v-if="mode === 'target' && keyword"
                         ref="wordBtn"
                         class="tts-btn"
@@ -61,8 +76,10 @@ const props = defineProps({
     showTranslation: { type: Boolean, default: false },
     mode: { type: String, default: 'plain' },
     autoReadWord: { type: Boolean, default: false }, // App 触发自动朗读单词
+    saving: { type: Boolean, default: false },       // 保存请求进行中
+    saved: { type: Boolean, default: false },        // 当前例句已保存
 });
-const emit = defineEmits(['refresh', 'open-ai']);
+const emit = defineEmits(['refresh', 'open-ai', 'save']);
 
 const refreshBtn = ref(null);
 const wordBtn = ref(null);
@@ -98,3 +115,10 @@ defineExpose({
     },
 });
 </script>
+
+<style scoped>
+/* 已保存状态：图标与文字变绿，表示当前例句已在收藏牌组 */
+.save-btn.save-done {
+    color: #4caf50;
+}
+</style>

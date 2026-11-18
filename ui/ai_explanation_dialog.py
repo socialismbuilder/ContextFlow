@@ -3,7 +3,6 @@ from aqt.qt import (QDialog, QVBoxLayout, QHBoxLayout, QTextEdit,
                     QPushButton, QWidget, QScrollArea, Qt, QTextCursor,
                     QTimer, QSizePolicy, pyqtSignal)
 from aqt.utils import showInfo, tooltip
-import requests
 import json
 import threading
 import queue
@@ -13,6 +12,8 @@ from functools import partial
 
 from ..config_manager import get_config
 from ..card.anki_card_creator import create_sentence_card
+from .. import llm_client
+from .. import prompts
 
 # --- 样式 ---
 DARK_THEME_STYLESHEET = """
@@ -35,109 +36,8 @@ AI_BUBBLE_STYLE = "QTextEdit { background-color: #f0f0f0; color: #1e1e1e; border
 
 
 
-prompt = """你是ContextFlow软件的语言学习助手，你将扮演一位资深的语言学家和友善的语言导师。你的任务是为语言学习者提供精准、简洁且高度相关的词汇/短语解释。
-
-{examples_length_clause}
-你的核心原则是**灵活应变**。你需要首先判断用户输入的类型，然后选择最合适的解释策略，而不是死板地遵循一个固定模板。
-
-你的核心原则是**灵活应变**。你需要首先判断用户输入的类型，然后选择最合适的解释策略，而不是死板地遵循一个固定模板。
-
-# 用户输入：
-- 原始例句: '{sentence}'
-- 目标内容: '{word_to_explain}'
-
-# 你的工作流程：
-
-### 第一步：智能分析
-在生成回答前，请先在内部完成以下思考：
-1.  **判断输入类型**: 用户选中的 `{word_to_explain}` 是一个标准的【单词】、一个【固定短语/成语】、一个【语法结构】、一个【句子片段】，还是一个可能因不理解而产生的【错误组合】（例如，选中了“我是个老师”里的“个老”）？
-2.  **确定解释重点**: 基于你的判断，决定解释的侧重点。目标是解决用户最根本的困惑，而不是机械地填充所有栏目。
-
-### 第二步：生成解释卡片
-请根据你的分析，**参考**使用以下最相关的模块，组合成一份清晰易懂的学习卡片。
-对于不必要或不相关的模块，请**直接省略**。
-对于你觉得非常有必要的，也可以***自行添加**。
-请使用 Markdown 格式化你的回答。
-
----
-
-#### 📌 核心解释
-- **永远需要。** 针对选中的 `{word_to_explain}` 给出最核心的定义。
-- 如果是**单词**，提供词性、拼音和基本含义。
-- 如果是**短语或句子**，解释其整体意思。
-- 这部分讲解请无视例句中的语境，直接针对词汇/短语本身进行解释，以确保用户能建立正确的基本概念。
-- 对于多义词，请给出全面的解释，并以词语的大类和引申义为主线分类，将大意类似或可以通过引申理解的归为一类，而不是根据刻板的词性和词典翻译。
-
-#### 🌐 语境解析
-- **大多数情况需要。** 解释 `{word_to_explain}` 在原句 `{sentence}` 中的具体作用和含义。
-
-#### ✨ 用法辨析与扩展
-- **（如果适用且有价值）** 提供近义词、反义词、形近词的辨析，或介绍相关的常见搭配、语法结构。**如果没有高质量的辨析内容，请跳过此项，保持简洁。**
-
-#### 🔍 特别提醒 / 结构分析
-- **（当判断为错误选择或复杂结构时使用）** 温和地指出这可能不是一个常规的词汇单位，并分解解释其组成部分。
-- **例如**: 对于“个老”，应分别解释“个”（量词）和“老师”（名词），并说明正确的句子结构是“（一）个老师”。这能直接解决用户的根本困惑。
-
----
-
-{examples_section}
-
-你的回答应该像一位经验丰富的老师，既有深度，又懂得因材施教，直击要点。现在，请根据这个新的指导原则，为用户服务。
-
-完成以上步骤后，等待用户的追问。对于随后的追问，不必遵循上述流程，完全灵活的处理。
-
-{examples_tool_clause}
-"""
-
-
-# 例句生成段（含 JSON 输出要求）。web 端不启用时整段省略。
-_EXAMPLES_SECTION = """### 第三步：应用实例
-最后，根据用户的学习要求生成 2-3 个高质量例句，来展示相关用法。
-请确保例句和翻译使用以下JSON格式输出，一个例句翻译对就是一个JSON对象，这一部分必须放在段落最后且无额外内容或注释，以便系统识别：
-
-- 词汇量大致为：{vocab_level}
-- 学习目标是：{learning_goal}
-- 句子最大难度：{difficulty_level}
-- 句子最大长度:{sentence_length_desc}
-
-**重要**: 例句和翻译必须以独立的 JSON 对象格式提供，并置于回答的末尾。不要在 JSON 代码块同一行内添加任何解释性文字或注释，以便系统识别：
-系统会自动识别json语法，任何除json语法和代码块符号外的多余的注释，空行，逗号都会被残留，因此请避免任何多余的符合和格式。
-
-```json
-{{
-  "sentence": "例句原文",
-  "translation": "例句翻译"
-}}```"""
-
-
-def build_prompt(
-    sentence: str,
-    word_to_explain: str,
-    vocab_level: str,
-    learning_goal: str,
-    difficulty_level: str,
-    sentence_length_desc: str,
-    include_examples: bool = True,
-) -> str:
-    """构建系统提示词。
-
-    include_examples=True（桌面端默认）：含第三步例句生成 + JSON 输出。
-    include_examples=False（web 端）：纯解释，不含例句段。
-    """
-    return prompt.format(
-        sentence=sentence,
-        word_to_explain=word_to_explain,
-        vocab_level=vocab_level,
-        learning_goal=learning_goal,
-        difficulty_level=difficulty_level,
-        sentence_length_desc=sentence_length_desc,
-        examples_length_clause=("除例句外，输出篇幅控制在约200-300字。"
-                                if include_examples else "输出篇幅控制在约200-300字。"),
-        examples_section=_EXAMPLES_SECTION if include_examples else "",
-        examples_tool_clause=("例句生成工具在用户追问时依然可以调用，但仅在用户明确要求更多例句，"
-                              "或者你认为提供额外例句能显著帮助用户理解时使用，避免显得刻板和冗余。"
-                              if include_examples else ""),
-    )
+# 提示词（EXPLANATION_PROMPT / build_explanation_prompt / build_explanation_messages）
+# 统一由 ..prompts 模块管理。
 
 
 # 【修改】重新引入创建独立UI组件的逻辑
@@ -397,39 +297,15 @@ class AIExplanationDialog(QDialog):
         ))
 
     def start_explanation(self):
-        # 【修改】系统提示回归到要求AI返回JSON
+        # 【修改】系统提示回归到要求AI返回JSON（提示词组装统一在 prompts 模块）
         config = get_config()
-        DEFAULT_CONFIG = {
-            "vocab_level": "大学英语四级 CET-4 (4000词)",
-            "learning_goal": "提升日常浏览英文网页与资料的流畅度",
-            "difficulty_level": "中级 (B1): 并列/简单复合句，稍复杂话题，扩大词汇范围",
-            "sentence_length_desc": "中等长度句 (约25-40词): 通用对话及文章常用长度",
-            "learning_language": "英语",
-            "prompt_name": "默认-不标记目标词"
-        }
-        vocab_level = config.get("vocab_level", DEFAULT_CONFIG["vocab_level"])
-        learning_goal = config.get("learning_goal", DEFAULT_CONFIG["learning_goal"])
-        difficulty_level = config.get("difficulty_level", DEFAULT_CONFIG["difficulty_level"])
-        sentence_length_desc = config.get("sentence_length_desc", DEFAULT_CONFIG["sentence_length_desc"])
-
-        system_prompt = build_prompt(
+        self.conversation_history = prompts.build_explanation_messages(
+            config,
             sentence=self.sentence,
-            word_to_explain=self.word_to_explain,
-            vocab_level=vocab_level,
-            learning_goal=learning_goal,
-            difficulty_level=difficulty_level,
-            sentence_length_desc=sentence_length_desc,
+            word=self.word_to_explain,
+            history=None,
             include_examples=True,
         )
-        
-        # 检查模型名称是否包含qwen3，如果是则在提示词末尾添加/no_think标签
-        if "qwen3" in self.model_name.lower():
-            system_prompt += "\n/no_think"
-            
-        self.conversation_history = [
-            {"role": "system", "content": ""},
-            {"role": "user", "content": system_prompt}
-        ]
         self.send_message_to_ai()
 
     def send_message(self):
@@ -470,52 +346,24 @@ class AIExplanationDialog(QDialog):
         self.timer = self.startTimer(50)
 
     def _stream_api_response(self):
-        # 检查是否为ollama模型（localhost、127.0.0.1或模型名包含ollama）
-        is_ollama = ("localhost" in self.api_url or "127.0.0.1" in self.api_url or 
-                    "ollama" in self.model_name.lower())
-        
-        # 对于ollama模型，不设置Authorization header
-        if is_ollama:
-            headers = {"Content-Type": "application/json"}
-        else:
-            headers = {"Authorization": f"Bearer {self.api_key}", "Content-Type": "application/json"}
-            
-        from .. import api_client
-        if api_client.support_thinking:
-            payload = {"model": self.model_name, "messages": self.conversation_history, "stream": True,"thinking": {"type": "disabled"}}
-        else:
-            payload = {"model": self.model_name, "messages": self.conversation_history, "stream": True}
+        # 流式请求、thinking 降级、ollama 鉴权、qwen3 /no_think
+        # 统一由 llm_client.chat_stream 处理，这里只负责消费事件流并投递到 UI 队列。
+        config = get_config()
+        full_response_content = ""
         try:
-            response = requests.post(self.api_url, headers=headers, json=payload, stream=True, timeout=60)
-            response.raise_for_status()
-            full_response_content = ""
-            for chunk in response.iter_content(chunk_size=None):
-                if self.stop_streaming.is_set(): break
-                if chunk:
-                    chunk_str = chunk.decode('utf-8', errors='ignore')
-                    for line in chunk_str.splitlines():
-                        if line.startswith("data: "):
-                            json_data = line[len("data: "):].strip()
-                            if json_data == "[DONE]":
-                                self.stream_queue.put("[STREAM_END]")
-                                break
-                            try:
-                                data = json.loads(json_data)
-                                # choices 可能为空列表（结尾帧/usage帧），需安全取值，否则抛 IndexError 中断整个流
-                                choices = data.get("choices") or []
-                                if not choices:
-                                    continue
-                                delta_content = choices[0].get("delta", {}).get("content", "")
-                                if delta_content:
-                                    self.stream_queue.put(delta_content)
-                                    full_response_content += delta_content
-                            except json.JSONDecodeError: continue
-                        if "[DONE]" in line: break
-                    if "[DONE]" in chunk_str: break
+            for event in llm_client.chat_stream(config, self.conversation_history,
+                                                stop_event=self.stop_streaming):
+                if self.stop_streaming.is_set():
+                    break
+                if event["type"] == "delta":
+                    self.stream_queue.put(event["content"])
+                    full_response_content += event["content"]
+                elif event["type"] == "error":
+                    self.stream_queue.put(
+                        f"<p style='color: #ff6b6b;'><b>错误:</b> {event['message']}</p>[STREAM_END_ERROR]")
+                    return
             if full_response_content:
                 self.conversation_history.append({"role": "assistant", "content": full_response_content})
-        except requests.exceptions.RequestException as e:
-            self.stream_queue.put(f"<p style='color: #ff6b6b;'><b>网络错误:</b> {e}</p>[STREAM_END_ERROR]")
         except Exception as e:
             self.stream_queue.put(f"<p style='color: #ff6b6b;'><b>意外错误:</b> {e}</p>[STREAM_END_ERROR]")
         finally:

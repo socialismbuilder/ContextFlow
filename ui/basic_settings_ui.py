@@ -13,7 +13,7 @@ from aqt.qt import (
 )
 from ..config_manager import get_config, save_config
 from ..cache.cache_manager import clear_cache
-from .. import api_client
+from .. import llm_client
 from ..card.card_template_manager import update_card_templates
 from PyQt6.QtCore import QTimer, QObject, pyqtSignal as Signal
 
@@ -40,20 +40,6 @@ def add_api_setting(parent_dialog, basic_layout, current_config):
     api_layout.addRow("API 接口地址:", parent_dialog.api_url)
 
     saved_api_url = current_config.get("api_url", "")
-    provider_match = False
-    for provider, url in PRESET_API_URLS.items():
-        if url == saved_api_url and provider != "自定义":
-            parent_dialog.api_provider_combo.setCurrentText(provider)
-            provider_match = True
-            break
-    if not provider_match and saved_api_url:
-        parent_dialog.api_provider_combo.setCurrentText("自定义")
-    elif not saved_api_url and "火山/豆包/字节（推荐）" in PRESET_API_URLS:
-        parent_dialog.api_provider_combo.setCurrentText("火山/豆包/字节（推荐）")
-
-    _on_api_provider_changed(parent_dialog)
-    parent_dialog.api_url.setText(saved_api_url)
-    parent_dialog.api_provider_combo.currentTextChanged.connect(lambda: _on_api_provider_changed(parent_dialog))
 
     parent_dialog.api_key = QLineEdit(current_config.get("api_key", ""))
     parent_dialog.api_key.setEchoMode(QLineEdit.EchoMode.Password)
@@ -77,6 +63,42 @@ def add_api_setting(parent_dialog, basic_layout, current_config):
     model_layout.addWidget(parent_dialog.model_name)
     model_layout.addWidget(parent_dialog.refresh_models_btn)
     api_layout.addRow("模型名称:", model_widget)
+
+    # 思考额度：统一 关/低/中/高/默认 五档，后端按模型映射具体参数
+    parent_dialog.thinking_mode_combo = NoWheelComboBox()
+    for mode_value, mode_label in llm_client.THINKING_MODE_LABELS.items():
+        parent_dialog.thinking_mode_combo.addItem(mode_label, mode_value)
+    saved_thinking_mode = current_config.get("thinking_mode", "off")
+    idx = parent_dialog.thinking_mode_combo.findData(saved_thinking_mode)
+    parent_dialog.thinking_mode_combo.setCurrentIndex(idx if idx >= 0 else 0)
+    api_layout.addRow("思考额度:", parent_dialog.thinking_mode_combo)
+
+    # 每个供应商独立记忆 api_url / api_key / model_name，切换时自动存取
+    parent_dialog.provider_credentials = dict(current_config.get("provider_credentials", {}) or {})
+
+    saved_provider = None
+    for provider, url in PRESET_API_URLS.items():
+        if url == saved_api_url and provider != "自定义":
+            saved_provider = provider
+            break
+    if not saved_provider and saved_api_url:
+        saved_provider = "自定义"
+    parent_dialog._last_provider = saved_provider
+
+    # 把当前生效的配置先记到对应供应商名下，避免首次切换就丢失
+    if saved_provider:
+        parent_dialog.provider_credentials.setdefault(saved_provider, {
+            "api_url": saved_api_url,
+            "api_key": current_config.get("api_key", ""),
+            "model_name": current_config.get("model_name", ""),
+        })
+
+    if saved_provider:
+        parent_dialog.api_provider_combo.setCurrentText(saved_provider)
+    _on_api_provider_changed(parent_dialog, is_init=True)
+    parent_dialog.api_url.setText(saved_api_url)
+    parent_dialog.api_provider_combo.currentTextChanged.connect(
+        lambda: _on_api_provider_changed(parent_dialog))
 
     parent_dialog.test_connection_button = QPushButton("测试 API 连接")
     parent_dialog.test_connection_button.clicked.connect(lambda: _test_api_connection(parent_dialog))
@@ -409,15 +431,40 @@ def clear_cache_and_notify(parent_dialog):
     except Exception as e:
         QMessageBox.warning(parent_dialog, "错误", f"清除缓存时出错: {e}")
 
-def _on_api_provider_changed(parent_dialog):
+def _on_api_provider_changed(parent_dialog, is_init=False):
+    """切换供应商：先把当前界面的 url/key/model 存回上一个供应商名下，再载入新供应商的记忆值。"""
+    PRESET_API_URLS = get_config().get("preset_api_urls")
     provider = parent_dialog.api_provider_combo.currentText()
+    creds = parent_dialog.provider_credentials
+
+    prev = getattr(parent_dialog, "_last_provider", None)
+    if not is_init and prev and prev != provider:
+        creds[prev] = {
+            "api_url": parent_dialog.api_url.text(),
+            "api_key": parent_dialog.api_key.text(),
+            "model_name": parent_dialog.model_name.currentText(),
+        }
+        # 切换供应商后旧的模型列表缓存失效
+        parent_dialog.cached_models = []
+    parent_dialog._last_provider = provider
+
+    stored = creds.get(provider, {})
+
     if provider == "自定义":
         parent_dialog.api_url.setReadOnly(False)
         parent_dialog.api_url.setPlaceholderText("请输入自定义 API URL")
-    else:
-        PRESET_API_URLS = get_config().get("preset_api_urls")
-        parent_dialog.api_url.setText(PRESET_API_URLS.get(provider, ""))
-        parent_dialog.api_url.setReadOnly(True)
+        if not is_init:
+            parent_dialog.api_url.setText(stored.get("api_url", ""))
+            parent_dialog.api_key.setText(stored.get("api_key", ""))
+            parent_dialog.model_name.setEditText(stored.get("model_name", ""))
+        return
+
+    parent_dialog.api_url.setText(PRESET_API_URLS.get(provider, ""))
+    parent_dialog.api_url.setReadOnly(True)
+
+    if not is_init:
+        parent_dialog.api_key.setText(stored.get("api_key", ""))
+        parent_dialog.model_name.setEditText(stored.get("model_name", ""))
 
 def _refresh_model_list(parent_dialog, force=False):
     if hasattr(parent_dialog, 'cached_models') and parent_dialog.cached_models and not force:
@@ -439,7 +486,7 @@ def _refresh_model_list(parent_dialog, force=False):
                 QMessageBox.warning(parent_dialog, "错误", "请先填写 API Key")
             return
 
-        models, error = api_client.fetch_available_models(api_url, api_key)
+        models, error = llm_client.fetch_available_models(api_url, api_key)
         if not models:
             if force:
                 QMessageBox.warning(parent_dialog, "错误", error or "无法获取模型列表，可能是配置错误或供应商不支持查询列表")
@@ -488,8 +535,9 @@ def _test_api_connection(parent_dialog):
 
     start_time = time.time()
     try:
-        result_text, error_message = api_client.test_api_sync(
-            api_url, api_key, model_name, timeout_seconds=30
+        result_text, error_message = llm_client.test_connection(
+            api_url, api_key, model_name, timeout_seconds=30,
+            thinking_mode=get_config().get("thinking_mode", "off")
         )
         print("输出结果：", result_text)
 
@@ -644,6 +692,7 @@ def save_basic_settings(parent_dialog):
         "api_url": parent_dialog.api_url.text(),
         "api_key": parent_dialog.api_key.text(),
         "model_name": parent_dialog.model_name.currentText(),
+        "thinking_mode": parent_dialog.thinking_mode_combo.currentData() or "auto",
         "deck_name": parent_dialog.deck_name.text(),
         "save_deck": parent_dialog.save_deck.text(),
         "vocab_level": _get_combo_value(parent_dialog.vocab_level_combo, getattr(parent_dialog, 'vocab_level_custom', None)),
@@ -668,6 +717,15 @@ def save_basic_settings(parent_dialog):
     for key in ["custom_prompts", "preset_api_urls", "preset_vocab_levels", "preset_learning_goals", "preset_difficulties", "preset_lengths"]:
         if key in current_full_config:
             new_config[key] = current_full_config[key]
+
+    # 把当前界面的 url/key/model 记到当前供应商名下，并保留其他供应商的凭据
+    provider_credentials = dict(getattr(parent_dialog, "provider_credentials", {}) or {})
+    provider_credentials[parent_dialog.api_provider_combo.currentText()] = {
+        "api_url": new_config["api_url"],
+        "api_key": new_config["api_key"],
+        "model_name": new_config["model_name"],
+    }
+    new_config["provider_credentials"] = provider_credentials
 
     # Preserve all existing edge_tts_voice_* overrides, update current language's
     for key in current_full_config:

@@ -39,6 +39,8 @@ export function useCardFlow() {
         translation: '',
         keyword: '',
         sentenceReady: true,
+        saving: false,             // 例句保存请求进行中
+        saved: false,              // 当前例句已保存
         questionHtml: '',          // plain 模式正面
         originHtml: '',            // 原卡背面（plain/saved/target 叠加）
         buttonLabels: [],          // 四档按钮文案
@@ -81,6 +83,8 @@ export function useCardFlow() {
         state.translation = data.translation || '';
         state.keyword = data.keyword || '';
         state.sentenceReady = data.sentence_ready !== false;
+        state.saving = false;
+        state.saved = false;
         state.buttonLabels = data.button_labels || [];
 
         state.screen = Screen.CARD;
@@ -280,6 +284,26 @@ export function useCardFlow() {
         }
     }
 
+    // 保存例句到收藏牌组（仅 target 模式，供 SentenceCard 调用）
+    async function saveSentence() {
+        if (!currentCardId || state.cardMode !== 'target') return;
+        if (state.saving || state.saved) return; // 请求中或已保存：忽略点击
+        state.saving = true;
+        try {
+            const data = await api.saveSentence();
+            if (data.status === 'error' || data.error) {
+                showError('保存失败', data.error || '未知错误');
+                return;
+            }
+            // 已保存：切换图标状态，直到换卡后重置
+            state.saved = true;
+        } catch (e) {
+            showError('保存失败', e.message);
+        } finally {
+            state.saving = false;
+        }
+    }
+
     // 与 AnkiWeb 云端同步：触发后轮询直到完成，再刷新状态与队列。
     // 后端是 fire-and-forget，真正同步在桌面端 Qt 主线程异步进行。
     function sleep(ms) {
@@ -341,6 +365,7 @@ export function useCardFlow() {
         // 卡片流转
         init, refreshStatus, fetchNext, showBack, answer, undoCard, checkUndo,
         refreshSentence,
+        saveSentence,
         // 云端同步
         syncToCloud,
         // 牌组

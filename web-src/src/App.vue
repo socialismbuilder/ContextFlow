@@ -9,7 +9,7 @@
     />
 
     <!-- 卡片屏幕（状态条始终显示，卡片流转在内部切换）-->
-    <CardArea v-if="state.screen === Screen.CARD" ref="cardAreaRef" :state="state" @flip="flow.showBack()" @answer="flow.answer($event)" @refresh="flow.refreshSentence()" @open-ai="openAi" />
+    <CardArea v-if="state.screen === Screen.CARD" ref="cardAreaRef" :state="state" @flip="flow.showBack()" @answer="flow.answer($event)" @refresh="flow.refreshSentence()" @save="flow.saveSentence()" @open-ai="openAi" />
 
     <!-- 牌组选择 -->
     <DeckSelector v-else-if="state.screen === Screen.DECK_SELECTOR" :syncing="state.syncing" @select="onSelectDeck" @back="flow.closeDeckSelector()" @sync="flow.syncToCloud()" />

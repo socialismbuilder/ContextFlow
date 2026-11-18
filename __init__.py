@@ -12,8 +12,9 @@ if _lib_path not in sys.path:
 # Use relative imports for modules within the same addon package
 from .ui import ui_manager
 from . import main_logic
-from . import api_client
+from . import sentence_service
 from .card.card_template_manager import update_card_templates
+from .config_manager import pretty_print_meta
 from aqt import gui_hooks
 import aqt
 
@@ -23,6 +24,9 @@ ui_manager.register_menu_item()
 
 # 2. Register the necessary hooks (e.g., card rendering)
 main_logic.register_hooks()
+
+# 2.5 Re-format meta.json (Anki writes it single-line with escaped unicode)
+gui_hooks.profile_did_open.append(lambda: pretty_print_meta())
 
 # 3. Update saved sentence card templates after profile loads
 gui_hooks.profile_did_open.append(lambda: update_card_templates())

@@ -10,7 +10,9 @@ from aqt.qt import (
     QTabWidget, QTextEdit, QSplitter, Qt, QGridLayout, QCompleter, QScrollArea
 )
 from ..config_manager import get_config, save_config
-from .. import api_client
+from .. import prompts
+from .. import llm_client
+from .. import sentence_service
 from .. import main_logic # 导入 main_logic 以便调用线程池
 
 # Custom ComboBox to ignore wheel events
@@ -113,10 +115,10 @@ def load_selected_prompt(parent_dialog, source):
     custom_prompts = config.get("custom_prompts", {})
 
     if source == "默认-不标记目标词":
-        content = api_client.DEFAULT_PROMPT_TEMPLATE + api_client.DEFAULT_FORMAT_NORMAL
+        content = prompts.SENTENCE_PROMPT_TEMPLATE + prompts.FORMAT_NORMAL
         parent_dialog.prompt_name_edit.setText("自定义提示词")
     elif source == "默认-标记目标词":
-        content = api_client.DEFAULT_PROMPT_TEMPLATE + api_client.DEFAULT_FORMAT_HIGHLIGHT
+        content = prompts.SENTENCE_PROMPT_TEMPLATE + prompts.FORMAT_HIGHLIGHT
         parent_dialog.prompt_name_edit.setText("自定义提示词")
     elif source == "空":
         content = ""
@@ -208,17 +210,10 @@ def test_prompt_template(parent_dialog):
 
     prompt = parent_dialog.prompt_template_edit.toPlainText()
     test_config = get_config()
-    second_keywords_str = "strand,exasperated,grudgingly,guerrilla,parish,extent,casino,carousel,hypocritical,hunch"
-    second_keywords_str = "\n6. 拓展融入：在保证句子自然流畅的前提下，可顺势在例句中融入以下词汇中的 0-3 个（非强制，以自然流畅为先）：" + second_keywords_str
     try:
-        formatted_prompt = prompt.format(
-            world=keyword,
-            vocab_level=test_config["vocab_level"],
-            learning_goal=test_config["learning_goal"],
-            difficulty_level=test_config["difficulty_level"],
-            sentence_length_desc=test_config["sentence_length_desc"],
-            language=test_config["learning_language"],
-            second_keywords=second_keywords_str
+        # 测试时使用固定样例的第二关键词片段，避免真实查询牌组
+        formatted_prompt = prompts.format_prompt(
+            test_config, keyword, prompt=prompt, sample_second_keywords=True
         )
     except Exception as e:
         parent_dialog.test_result_edit.setText(f"提示词格式化错误: {str(e)}")
@@ -239,9 +234,9 @@ def test_prompt_template(parent_dialog):
     QApplication.processEvents()
 
     future = main_logic.executor.submit(
-        api_client.get_api_response,
+        llm_client.chat,
         test_config,
-        formatted_prompt
+        [{"role": "user", "content": formatted_prompt}]
     )
 
     def handle_result(future):
@@ -252,8 +247,8 @@ def test_prompt_template(parent_dialog):
 def _handle_future(parent_dialog, future, keyword):
     try:
         api_response = future.result()
-        text_content = api_client.get_message_content(api_response, keyword)
-        sentence_pairs = api_client.parse_message_content_to_sentence_pairs(text_content, keyword)
+        text_content = sentence_service.get_message_content(api_response, keyword)
+        sentence_pairs = sentence_service.parse_response(text_content, keyword)
 
         if not sentence_pairs:
             parent_dialog.test_result_edit.setText("例句生成失败，原始输出内容为：\n" + text_content)

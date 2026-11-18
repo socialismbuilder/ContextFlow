@@ -9,7 +9,7 @@ from anki.cards import Card
 
 from .config_manager import get_config, clean_html
 from .cache.cache_manager import load_cache, save_cache, pop_cache
-from .api_client import generate_ai_sentence
+from .sentence_service import generate
 
 
 class SentenceTaskManager:
@@ -82,7 +82,7 @@ class SentenceTaskManager:
             print("DEBUG: Initiating thread pool shutdown...")
             self.stop_event.set()
             # wait=False 避免退出时长时间等待。worker 最多在
-            # generate_ai_sentence 的网络超时（约 30s）后返回；
+            # sentence_service.generate 的网络超时（约 30s）后返回；
             # 这些 worker 是 daemon 线程，进程退出时会被强制回收。
             self.executor.shutdown(wait=False)
             print("DEBUG: Thread pool shutdown initiated.")
@@ -238,7 +238,7 @@ class SentenceTaskManager:
         print(f"DEBUG:正在处理关键词: {keyword} (优先级: {priority})")
 
         try:
-            sentence_pairs = generate_ai_sentence(config, keyword)
+            sentence_pairs = generate(config, keyword)
 
             if sentence_pairs:
                 with self.cache_lock:

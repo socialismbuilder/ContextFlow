@@ -771,6 +771,44 @@ body {
 .ai-bubble.ai a { color: #8ab4ff; }
 .ai-bubble.error { align-self: center; background: rgba(255,80,80,.15); color: #ff9b9b; }
 
+/* AI 例句卡片（流结束后从 JSON 解析渲染，带保存按钮） */
+.ai-example-block {
+    margin: 10px 0 2px;
+    padding: 10px 12px;
+    border: 1px solid var(--glass-border);
+    border-radius: 10px;
+    background: rgba(255, 255, 255, 0.06);
+}
+.ai-example-title {
+    font-size: 12px;
+    font-weight: bold;
+    color: rgba(255, 255, 255, 0.75);
+    margin-bottom: 6px;
+}
+.ai-example-sentence { font-size: 14px; color: #fff; line-height: 1.6; }
+.ai-example-sentence .highlight {
+    background: rgba(106, 76, 147, 0.55);
+    border-radius: 3px;
+    padding: 0 2px;
+}
+.ai-example-translation {
+    font-size: 13px;
+    color: rgba(255, 255, 255, 0.65);
+    margin: 4px 0 8px;
+}
+.ai-example-save {
+    width: 100%;
+    padding: 6px 0;
+    border: none;
+    border-radius: 8px;
+    background: rgba(106, 76, 147, 0.65);
+    color: #fff;
+    font-size: 13px;
+    cursor: pointer;
+}
+.ai-example-save:active { background: rgba(106, 76, 147, 0.85); }
+.ai-example-save.saved { background: rgba(60, 140, 80, 0.6); cursor: default; }
+
 .ai-input-bar {
     flex-shrink: 0;
     display: flex;

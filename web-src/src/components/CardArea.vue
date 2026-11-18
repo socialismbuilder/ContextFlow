@@ -10,7 +10,10 @@
             :show-translation="state.showAnswer"
             :mode="state.cardMode"
             :auto-read-word="state._autoReadWord"
+            :saving="state.saving"
+            :saved="state.saved"
             @refresh="$emit('refresh')"
+            @save="$emit('save')"
             @open-ai="$emit('open-ai', $event)"
         />
 
@@ -38,7 +41,7 @@ import { playAutoAudio } from '../utils/tts.js';
 const props = defineProps({
     state: { type: Object, required: true },
 });
-defineEmits(['flip', 'answer', 'refresh', 'open-ai']);
+defineEmits(['flip', 'answer', 'refresh', 'save', 'open-ai']);
 
 const sentenceCardRef = ref(null);
 
